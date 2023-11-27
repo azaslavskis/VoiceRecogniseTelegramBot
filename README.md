@@ -6,7 +6,7 @@ Simple bot that takes image or video message or video and converts it to text.
 
 - [ ] Debian packages (.deb)
 - [ ] CLI
-- [ ] Update libs and clean code
+- [%] Update libs and clean code
 - [ ] Make CasaOS integration
 - [ ] Make Cockpit integration
 - [ ] Set up auto builds on Git
