@@ -16,3 +16,19 @@ Simple bot that takes image or video message or video and converts it to text.
 - [ ] PPA repos
 - [ ] Docs for code
 
+
+Config sample 
+```TOML
+[path_config]
+config_path = "/path/to/config"
+model_path = "/path/to/model"
+temp_path = "/path/to/temp"
+    
+[model_options]
+model = "GPT-3.5"
+language_target = "English"
+    
+[telegram_config]
+api_key = "your_telegram_api_key"
+chat_id = "your_chat_id"
+```
