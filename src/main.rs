@@ -1,4 +1,10 @@
-mod utils;
 mod logger_init;
+use logger_init::Logger;
+mod utils;
 
-fn main() {}
+fn main() {
+    Logger::init();
+    Logger::log(1,"App loaded ok");
+
+
+}
