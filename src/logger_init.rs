@@ -1,14 +1,13 @@
 //! A simple logger implementation using the `log` crate.
 
-use log::{debug, error, info, warn};
 use env_logger::Env;
+use log::{debug, error, info, warn};
 
 /// A struct representing a basic logger.
 pub struct Logger {}
 
 impl Logger {
-
-    pub fn init(){
+    pub fn init() {
         env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
     }
     /// Logs a message at the specified level.
@@ -34,12 +33,11 @@ impl Logger {
     /// logger.log(3, String::from("This is a warning message"));
     /// ```
     pub fn log(level: usize, message: &str) {
-
         match level {
             1 => info!("Info: {}", message),
             2 => debug!("Debug: {}", message),
             3 => warn!("Warning: {}", message),
-            4 => error!("Error:{}",message),
+            4 => error!("Error:{}", message),
             _ => {
                 error!("Logger caused an error. Programmer must have been really drunk");
             }

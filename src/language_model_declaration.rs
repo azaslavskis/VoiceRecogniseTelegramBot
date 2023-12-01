@@ -1,6 +1,6 @@
 use serde_derive::Deserialize;
 
-#[derive(Debug,Copy, Clone,Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize)]
 
 pub enum LanguageModel {
     TinyEn,
