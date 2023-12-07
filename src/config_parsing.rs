@@ -1,33 +1,36 @@
-use crate::language_model_declaration::LanguageModel;
+
 use serde_derive::Deserialize;
 // Import the required dependencies.
 use crate::logger_init::Logger;
-
 use std::fs;
 use std::process::exit;
 use toml;
-
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
 pub struct Config {
     pub data: Data,
 }
+#[allow(non_camel_case_types)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Data {
     pub path_config: Path_Config,
     pub model_options: Model_Options,
     pub telegram_config: Telegram_Config,
 }
+#[allow(non_camel_case_types)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Path_Config {
     pub config_path: String,
     pub model_path: String,
     pub temp_path: String,
 }
+#[allow(non_camel_case_types)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Model_Options {
     pub model: String,
     pub language_target: String,
 }
+#[allow(non_camel_case_types)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Telegram_Config {
     pub api_key: String,
@@ -47,7 +50,7 @@ impl Config {
             // Handle the `error` case.
             Err(_) => {
                 // Write `msg` to `stderr`.
-                Logger::log(4,format!("Could not read file `{}`", filename).as_str());
+                Logger::log(4, format!("Could not read file `{}`", filename).as_str());
                 // Exit the program with exit code `1`.
                 exit(1);
             }

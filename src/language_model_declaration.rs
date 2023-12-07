@@ -78,5 +78,4 @@ impl LanguageModel {
             _ => None,
         }
     }
-
 }

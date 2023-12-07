@@ -3,9 +3,9 @@ use crate::language_model_declaration::LanguageModel;
 use crate::Logger;
 use std::io::Cursor;
 use tokio::runtime::Runtime;
-use std::process::exit;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+#[allow(non_camel_case_types)]
 pub struct get_model {}
 
 impl get_model {
@@ -23,7 +23,6 @@ impl get_model {
         let url = format!(
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin?download=true",
             language_model.to_string()
-
         );
         Logger::log(1, &url);
         let rt = Runtime::new().unwrap();
@@ -31,10 +30,10 @@ impl get_model {
         let r = rt.block_on(future);
         match r {
             Err(r) => {
-                let message = format!("cloning model failed: {} ",&r.to_string());
-                Logger::log(4,message.as_str());
+                let message = format!("cloning model failed: {} ", &r.to_string());
+                Logger::log(4, message.as_str());
             }
-            Ok(r) => ()
+            Ok(()) => (),
         }
     }
 }
