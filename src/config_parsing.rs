@@ -2,7 +2,7 @@ use crate::language_model_declaration::LanguageModel;
 use serde_derive::Deserialize;
 // Import the required dependencies.
 use crate::logger_init::Logger;
-use log::__private_api::log;
+
 use std::fs;
 use std::process::exit;
 use toml;
@@ -72,6 +72,4 @@ impl Config {
 
         return Config { data };
     }
-
 }
-
