@@ -52,4 +52,31 @@ impl LanguageModel {
             LanguageModel::LargeQ50 => "large-q5_0",
         }
     }
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "tiny.en" => Some(LanguageModel::TinyEn),
+            "tiny" => Some(LanguageModel::Tiny),
+            "tiny-q5_1" => Some(LanguageModel::TinyQ51),
+            "tiny.en-q5_1" => Some(LanguageModel::TinyEnQ51),
+            "base.en" => Some(LanguageModel::BaseEn),
+            "base" => Some(LanguageModel::Base),
+            "base-q5_1" => Some(LanguageModel::BaseQ51),
+            "base.en-q5_1" => Some(LanguageModel::BaseEnQ51),
+            "small.en" => Some(LanguageModel::SmallEn),
+            "small.en-tdrz" => Some(LanguageModel::SmallEnTdrz),
+            "small" => Some(LanguageModel::Small),
+            "small-q5_1" => Some(LanguageModel::SmallQ51),
+            "small.en-q5_1" => Some(LanguageModel::SmallEnQ51),
+            "medium" => Some(LanguageModel::Medium),
+            "medium.en" => Some(LanguageModel::MediumEn),
+            "medium-q5_0" => Some(LanguageModel::MediumQ50),
+            "medium.en-q5_0" => Some(LanguageModel::MediumEnQ50),
+            "large-v1" => Some(LanguageModel::LargeV1),
+            "large-v2" => Some(LanguageModel::LargeV2),
+            "large-v3" => Some(LanguageModel::LargeV3),
+            "large-q5_0" => Some(LanguageModel::LargeQ50),
+            _ => None,
+        }
+    }
+
 }

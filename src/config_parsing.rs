@@ -47,12 +47,12 @@ impl Config {
             // Handle the `error` case.
             Err(_) => {
                 // Write `msg` to `stderr`.
-                eprintln!("Could not read file `{}`", filename);
+                Logger::log(4,format!("Could not read file `{}`", filename).as_str());
                 // Exit the program with exit code `1`.
                 exit(1);
             }
         };
-        Logger::log(1, contents.as_str());
+        //Logger::log(1, contents.as_str());
 
         let data: Data = match toml::from_str(&contents) {
             // If successful, return data as `Data` struct.

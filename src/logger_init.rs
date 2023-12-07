@@ -37,7 +37,7 @@ impl Logger {
             1 => info!("Info: {}", message),
             2 => debug!("Debug: {}", message),
             3 => warn!("Warning: {}", message),
-            4 => error!("Error:{}", message),
+            4 => error!("Error: {}", message),
             _ => {
                 error!("Logger caused an error. Programmer must have been really drunk");
             }
