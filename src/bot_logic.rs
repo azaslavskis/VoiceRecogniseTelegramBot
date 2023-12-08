@@ -7,6 +7,7 @@ use std::path::Path;
 use teloxide::prelude::*;
 use teloxide::types::InputFile;
 use teloxide::{prelude::*, utils::command::BotCommands};
+use crate::whisper_api::Whisper;
 #[derive(BotCommands, Clone)]
 #[command(
     rename_rule = "lowercase",
@@ -17,24 +18,26 @@ enum Command {
     log,
     #[command(description = "display this text.")]
     Help,
-    #[command(description = "handle a username.")]
-    Username(String),
+    #[command(description = "sets recognise language.")]
+    Lang(String),
     #[command(description = "handle a username and an age.", parse_with = "split")]
     UsernameAndAge { username: String, age: u8 },
 }
 
-
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
+    let mut  whisper =  Whisper::new();
     match cmd {
         Command::Help => {
             bot.send_message(msg.chat.id, Command::descriptions().to_string())
                 .await?
         }
-        Command::Username(username) => {
-            bot.send_message(msg.chat.id, format!("Your username is @{username}."))
+        Command::Lang(lang) => {
+            whisper.set_lang(lang.clone());
+            bot.send_message(msg.chat.id, format!("Lang is set to {}", whisper.get_lang()))
                 .await?
         }
         Command::UsernameAndAge { username, age } => {
+            whisper.get_lang();
             bot.send_message(
                 msg.chat.id,
                 format!("Your username is @{username} and age is {age}."),

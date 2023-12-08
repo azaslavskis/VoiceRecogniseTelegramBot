@@ -13,6 +13,7 @@ use std::io::Read;
 use tokio::runtime::Runtime;
 mod bot_logic;
 mod language_model_declaration;
+mod whisper_api;
 use crate::bot_logic::bot_worker;
 
 mod utils;
