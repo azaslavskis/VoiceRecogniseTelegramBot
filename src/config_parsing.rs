@@ -1,4 +1,3 @@
-
 use serde_derive::Deserialize;
 // Import the required dependencies.
 use crate::logger_init::Logger;

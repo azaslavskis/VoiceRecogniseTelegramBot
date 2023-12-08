@@ -15,6 +15,9 @@ reqwest = "0.11.22"
 error-chain = "0.12.4"
 tempfile = "3.8.1"
 tokio =  { version = "1.3.4", features = ["full"] }
+teloxide = { version = "0.12.2", features = ["full"] }
+
+chrono = "0.4.31"
 
 
 
