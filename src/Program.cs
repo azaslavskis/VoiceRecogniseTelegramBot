@@ -2,12 +2,8 @@
 
 
 
+using Microsoft.Extensions.Configuration;
 using VoiceRecogniseBot;
 
 WhisperAPI VoiceRecognise = new WhisperAPI();
-//VoiceRecognise.RecogniseWav("anything.ogg","ru");
 var telegram = new TelegramAPI();
-
-
-
-

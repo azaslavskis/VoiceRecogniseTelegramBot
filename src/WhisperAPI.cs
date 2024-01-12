@@ -1,40 +1,53 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using System.Text;
-using System.Threading.Tasks;
 using Whisper.net;
 using Whisper.net.Ggml;
 
 namespace VoiceRecogniseBot
 {
-     class WhisperAPI
+    /// <summary>
+    /// Provides functionality to interact with the Whisper API for speech recognition.
+    /// </summary>
+    class WhisperAPI
     {
-        
-        public WhisperAPI() {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="WhisperAPI"/> class.
+        /// </summary>
+        public WhisperAPI()
+        {
+            // Initialize Whisper API configuration
             var config = new Config();
-            var ModelNameFromConfig = config.GetConfig()["model"];
+            var modelNameFromConfig = config.GetConfig()["model"];
             string modelName;
-            if (ModelNameFromConfig != null)
+
+            // Check if a custom model name is specified in the configuration
+            if (modelNameFromConfig != null)
             {
-                 modelName = ModelNameFromConfig;
+                modelName = modelNameFromConfig;
             }
             else
             {
-                Console.WriteLine("fall back to default");
-                 modelName = "ggml-base";
+                Console.WriteLine("Fallback to default model");
+                modelName = "ggml-base";
             }
-           
+
+            // Download and save the model if it doesn't exist
             if (!File.Exists(modelName))
             {
                 using var modelStream = WhisperGgmlDownloader.GetGgmlModelAsync(GgmlType.Base).Result;
                 using var fileWriter = File.OpenWrite(modelName);
                 modelStream.CopyTo(fileWriter);
             }
-
         }
 
-        internal string RecogniseWav(string file,string lang)
+        /// <summary>
+        /// Recognizes text from an Ogg audio file using the specified language.
+        /// </summary>
+        /// <param name="file">The path to the Ogg audio file.</param>
+        /// <param name="lang">The language for speech recognition.</param>
+        /// <returns>The recognized text.</returns>
+        internal string RecogniseWav(string file, string lang)
         {
             Console.WriteLine($"Model is ok {lang}");
             using var whisperFactory = WhisperFactory.FromPath("ggml-base.bin");
@@ -43,27 +56,57 @@ namespace VoiceRecogniseBot
                 .WithLanguage(lang.ToLower())
                 .Build();
 
-            var convertor = new AudioToWav();
+            var converter = new AudioToWav();
 
-            var path = convertor.OggToWav(file);
+            var path = converter.OggToWav(file);
             using var fileStream = File.OpenRead(path);
 
             var output = processor.ProcessAsync(fileStream);
             StringBuilder sb = new StringBuilder();
-    
 
             foreach (var result in output.ToBlockingEnumerable())
             {
-                string result_val = string.Format($"{result.Start}->{result.End}: {result.Text}");
+                string resultValue = $"{result.Start}->{result.End}: {result.Text}";
 
-                sb.AppendLine(result_val);
-                Console.WriteLine(result_val);   
+                sb.AppendLine(resultValue);
+                Console.WriteLine(resultValue);
             }
+
             return sb.ToString();
-
-
         }
 
-        
+        /// <summary>
+        /// Recognizes text from an MP4 audio file using the specified language.
+        /// </summary>
+        /// <param name="file">The path to the MP4 audio file.</param>
+        /// <param name="lang">The language for speech recognition.</param>
+        /// <returns>The recognized text.</returns>
+        internal string RecogniseMp4(string file, string lang)
+        {
+            Console.WriteLine($"Model is ok {lang}");
+            using var whisperFactory = WhisperFactory.FromPath("ggml-base.bin");
+
+            using var processor = whisperFactory.CreateBuilder()
+                .WithLanguage(lang.ToLower())
+                .Build();
+
+            var converter = new AudioToWav();
+
+            var path = converter.Mp4ToWav(file);
+            using var fileStream = File.OpenRead(path);
+
+            var output = processor.ProcessAsync(fileStream);
+            StringBuilder sb = new StringBuilder();
+
+            foreach (var result in output.ToBlockingEnumerable())
+            {
+                string resultValue = $"{result.Start}->{result.End}: {result.Text}";
+
+                sb.AppendLine(resultValue);
+                Console.WriteLine(resultValue);
+            }
+
+            return sb.ToString();
+        }
     }
 }
