@@ -10,7 +10,8 @@
             "RU",
             "LT",
             "EN"
-        ]
+        ],
+        "default_lang": "EN"
     }
 `
 
