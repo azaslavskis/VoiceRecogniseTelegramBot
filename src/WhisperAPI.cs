@@ -11,6 +11,36 @@ namespace VoiceRecogniseBot
     /// </summary>
     class WhisperAPI
     {
+        
+        private string modelName;
+        /// <summary>
+        /// Converts a model name to its corresponding GgmlType.
+        /// </summary>
+        /// <param name="modelName">The model name to convert.</param>
+        /// <returns>The GgmlType corresponding to the given model name, or GgmlType.Base if no match is found.</returns>
+        public GgmlType ToModel(string modelName)
+        {
+            // Create a dictionary to map model names to GgmlType values
+            Dictionary<string, GgmlType> modelMapping = new Dictionary<string, GgmlType>
+    {
+        { GgmlType.Tiny.ToString().ToLower(), GgmlType.Tiny },
+        { GgmlType.Small.ToString().ToLower(), GgmlType.Small },
+        { GgmlType.Medium.ToString().ToLower(), GgmlType.Medium },
+        { GgmlType.LargeV1.ToString().ToLower(), GgmlType.LargeV1 },
+        { GgmlType.LargeV2.ToString().ToLower(), GgmlType.LargeV2 },
+        { GgmlType.LargeV3.ToString().ToLower(), GgmlType.LargeV3 },
+        { GgmlType.Base.ToString().ToLower(), GgmlType.Base }
+    };
+
+            // Check if the modelName (case insensitive) exists in the dictionary, then return the corresponding GgmlType
+            if (modelMapping.ContainsKey(modelName.ToLower()))
+            {
+                return modelMapping[modelName.ToLower()];
+            }
+
+            // If no match is found, return GgmlType.Base by default
+            return GgmlType.Base;
+        }
         /// <summary>
         /// Initializes a new instance of the <see cref="WhisperAPI"/> class.
         /// </summary>
@@ -19,7 +49,7 @@ namespace VoiceRecogniseBot
             // Initialize Whisper API configuration
             var config = new Config();
             var modelNameFromConfig = config.GetConfig()["model"];
-            string modelName;
+            
 
             // Check if a custom model name is specified in the configuration
             if (modelNameFromConfig != null)
@@ -35,7 +65,8 @@ namespace VoiceRecogniseBot
             // Download and save the model if it doesn't exist
             if (!File.Exists(modelName))
             {
-                using var modelStream = WhisperGgmlDownloader.GetGgmlModelAsync(GgmlType.Base).Result;
+                Console.WriteLine(GgmlType.Tiny.ToString());
+                using var modelStream = WhisperGgmlDownloader.GetGgmlModelAsync(ToModel(modelName)).Result;
                 using var fileWriter = File.OpenWrite(modelName);
                 modelStream.CopyTo(fileWriter);
             }
@@ -50,7 +81,7 @@ namespace VoiceRecogniseBot
         internal string RecogniseWav(string file, string lang)
         {
             Console.WriteLine($"Model is ok {lang}");
-            using var whisperFactory = WhisperFactory.FromPath("ggml-base.bin");
+            using var whisperFactory = WhisperFactory.FromPath(modelName);
 
             using var processor = whisperFactory.CreateBuilder()
                 .WithLanguage(lang.ToLower())
@@ -84,7 +115,7 @@ namespace VoiceRecogniseBot
         internal string RecogniseMp4(string file, string lang)
         {
             Console.WriteLine($"Model is ok {lang}");
-            using var whisperFactory = WhisperFactory.FromPath("ggml-base.bin");
+            using var whisperFactory = WhisperFactory.FromPath(modelName);
 
             using var processor = whisperFactory.CreateBuilder()
                 .WithLanguage(lang.ToLower())
