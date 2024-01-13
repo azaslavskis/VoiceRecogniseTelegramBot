@@ -90,163 +90,103 @@ namespace VoiceRecogniseBot
             {
 
                 Console.WriteLine($"Update message: {update.Message.Type}");
-
-                if (update.Message.Voice != null)
+                if (update.Message != null)
                 {
-                    Console.WriteLine("voice api");
-                    Console.WriteLine(message.Voice.Duration);
-                    Console.WriteLine(message.Voice.FileId);
+                    string text = null;
                     string destinationFilePath = Path.GetTempFileName();
 
-                    await using Stream fileStream = System.IO.File.Create(destinationFilePath);
-                    var file = await botClient.GetInfoAndDownloadFileAsync(
-                        fileId: message.Voice.FileId,
-                        destination: fileStream,
-                        cancellationToken: cancellationToken);
-
-
-                    fileStream.Close();
-
-                    if (destinationFilePath != null && fileStream.CanWrite == false)
+                    if (update.Message.Voice != null || update.Message.Audio != null)
                     {
-                        //currentlang
-                        var text = VoiceRecognise.RecogniseWav(destinationFilePath, currentlang);
-                        var message_return = string.Format($"Сообщение распознанно! Содержимое \n {text}");
+                        string fileId = update.Message.Voice?.FileId ?? update.Message.Audio?.FileId;
+                        await using Stream fileStream = System.IO.File.Create(destinationFilePath);
+                        var file = await botClient.GetInfoAndDownloadFileAsync(fileId, fileStream, cancellationToken);
+                        fileStream.Close();
+
+                        if (fileStream.CanWrite == false)
+                        {
+                            text = VoiceRecognise.RecogniseWav(destinationFilePath, currentlang);
+                        }
+                    }
+                    else if (update.Message.VideoNote != null || update.Message.Video != null)
+                    {
+                        string fileId = update.Message.VideoNote?.FileId ?? update.Message.Video?.FileId;
+                        await using Stream fileStream = System.IO.File.Create(destinationFilePath);
+                        var file = await botClient.GetInfoAndDownloadFileAsync(fileId, fileStream, cancellationToken);
+                        fileStream.Close();
+
+                        if (fileStream.CanWrite == false)
+                        {
+                            text = VoiceRecognise.RecogniseMp4(destinationFilePath, currentlang);
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        var message_return = string.Format($"Сообщение распознано! Содержимое \n {text}");
                         await botClient.SendTextMessageAsync(
                          chatId: update.Message.Chat.Id,
                          text: message_return,
                          cancellationToken: cancellationToken);
+                        
                     }
-                }
-                if (update.Message.VideoNote != null)
-                {
-                    string destinationFilePath = Path.GetTempFileName();
-
-                    await using Stream fileStream = System.IO.File.Create(destinationFilePath);
-                    var file = await botClient.GetInfoAndDownloadFileAsync(
-                        fileId: message.VideoNote.FileId,
-                        destination: fileStream,
-                        cancellationToken: cancellationToken);
-                    fileStream.Close();
-
-                    if (destinationFilePath != null && fileStream.CanWrite == false)
-                    {
-                        //currentlang
-                        var text = VoiceRecognise.RecogniseMp4(destinationFilePath, currentlang);
-                        var message_return = string.Format($"Сообщение распознанно! Содержимое \n {text}");
-                        await botClient.SendTextMessageAsync(
-                         chatId: update.Message.Chat.Id,
-                         text: message_return,
-                         cancellationToken: cancellationToken);
-                    }
-
-                }
-                if (update.Message.Audio != null)
-                {
-                    string destinationFilePath = Path.GetTempFileName();
-
-                    await using Stream fileStream = System.IO.File.Create(destinationFilePath);
-                    var file = await botClient.GetInfoAndDownloadFileAsync(
-                        fileId: message.Audio.FileId,
-                        destination: fileStream,
-                        cancellationToken: cancellationToken);
-
-                    fileStream.Close();
-                    var text = VoiceRecognise.RecogniseWav(destinationFilePath, currentlang);
-                    var message_return = string.Format($"Сообщение распознанно! Содержимое \n {text}");
-                    await botClient.SendTextMessageAsync(
-                     chatId: update.Message.Chat.Id,
-                     text: message_return,
-                     cancellationToken: cancellationToken);
-                }
-
-                if (update.Message.Video != null)
-                {
-                    string destinationFilePath = Path.GetTempFileName();
-
-                    await using Stream fileStream = System.IO.File.Create(destinationFilePath);
-                    var file = await botClient.GetInfoAndDownloadFileAsync(
-                        fileId: message.Video.FileId,
-                        destination: fileStream,
-                        cancellationToken: cancellationToken);
-
-                    fileStream.Close();
-                    var text = VoiceRecognise.RecogniseMp4(destinationFilePath, currentlang);
-                    var message_return = string.Format($"Сообщение распознанно! Содержимое \n {text}");
-                    await botClient.SendTextMessageAsync(
-                     chatId: update.Message.Chat.Id,
-                     text: message_return,
-                     cancellationToken: cancellationToken);
                 }
             }
+
+
             var msg = update.Message;
-            var chatId = update.Message.Chat.Id;
-            //Console.WriteLine(message.Text);
+            var chatId = msg.Chat.Id;
+
             if (msg.Text != null)
             {
-                switch (msg.Text)
-                {
-                    case "start":
-                        Console.WriteLine("here");
-                        ReplyKeyboardMarkup replyKeyboardMarkup = new(new[]
+                Dictionary<string, Func<Task>> commandActions = new Dictionary<string, Func<Task>>
+    {
+        { "start", async () =>
             {
-    new KeyboardButton[] { "Set Lang","Info","About" },
-})
-                        {
-                            ResizeKeyboard = true
-                        };
+                Console.WriteLine("here");
+                var replyKeyboardMarkup = new ReplyKeyboardMarkup(new[]
+                {
+                    new KeyboardButton[] { "Set Lang", "Info", "About" },
+                })
+                {
+                    ResizeKeyboard = true
+                };
 
-                        Message sentMessage = await botClient.SendTextMessageAsync(
-                            chatId: chatId,
-                            text: "Choose a response",
-                            replyMarkup: replyKeyboardMarkup,
-                            cancellationToken: cancellationToken);
-                        break;
-                    case "Set Lang":
-                        KeyboardButton[] array = new KeyboardButton[langs_in_use.Count];
-                        int i = 0;
-                        foreach (var lang in langs_in_use)
-                        {
-                            array[i] = new KeyboardButton(lang);
-                            i++;
-                        }
-                        ReplyKeyboardMarkup langreplyKeyboard = new ReplyKeyboardMarkup(array)
-                        {
-                            ResizeKeyboard = true
-                        };
-                        Message langsentMessage = await botClient.SendTextMessageAsync(
-                            chatId: chatId,
-                            text: "Choose a response",
-                            replyMarkup: langreplyKeyboard,
-                            cancellationToken: cancellationToken);
-                        break;
-                    case "About":
-                        Message aboutmessage = await botClient.SendTextMessageAsync(
-                          chatId: chatId,
-                          text: "bot message",
-                          cancellationToken: cancellationToken);
-                        break;
-                    case "log":
-                        await botClient.SendTextMessageAsync(
-                         chatId: chatId,
-                         text: "bot message",
-                         cancellationToken: cancellationToken);
-                        break;
+                await botClient.SendTextMessageAsync(chatId, "Choose a response", replyMarkup: replyKeyboardMarkup, cancellationToken: cancellationToken);
+            }
+        },
+        { "Set Lang", async () =>
+            {
+                var langButtons = langs_in_use.Select(lang => new KeyboardButton(lang)).ToArray();
+                var langReplyKeyboard = new ReplyKeyboardMarkup(langButtons) { ResizeKeyboard = true };
+
+                await botClient.SendTextMessageAsync(chatId, "Choose a response", replyMarkup: langReplyKeyboard, cancellationToken: cancellationToken);
+            }
+        },
+        { "About", async () =>
+            {
+                await botClient.SendTextMessageAsync(chatId, "bot message", cancellationToken: cancellationToken);
+            }
+        },
+        { "log", async () =>
+            {
+                await botClient.SendTextMessageAsync(chatId, "bot message", cancellationToken: cancellationToken);
+            }
+        }
+    };
+
+                if (commandActions.ContainsKey(msg.Text))
+                {
+                    await commandActions[msg.Text]();
                 }
 
-                bool containsElement = langs_in_use.Any(element => update.Message.Text.Contains(element));
+                bool containsElement = langs_in_use.Contains(msg.Text);
                 if (containsElement)
                 {
-                    currentlang = update.Message.Text;
-                    var msg_value = string.Format($"Changed message recognition language to {currentlang}");
+                    currentlang = msg.Text;
+                    var msg_value = $"Changed message recognition language to {currentlang}";
 
-                    await botClient.SendTextMessageAsync(
-                          chatId: chatId,
-                          text: msg_value,
-                          cancellationToken: cancellationToken);
-
+                    await botClient.SendTextMessageAsync(chatId, msg_value, cancellationToken: cancellationToken);
                 }
-
             }
 
         }
