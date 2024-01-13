@@ -22,6 +22,7 @@ namespace VoiceRecogniseBot
         public static string currentlang = "";
         private List<string> langs_in_use = new List<string>();
         private WhisperAPI VoiceRecognise = new WhisperAPI();
+        private static TelegramBotLogger app_log = new TelegramBotLogger();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TelegramAPI"/> class.
@@ -31,6 +32,7 @@ namespace VoiceRecogniseBot
 
             var config = new Config();
             if (config.GetConfig()["default_lang"] != null) currentlang = config.GetConfig()["default_lang"];
+            app_log.logger.Info($"Getting default lang from config {currentlang}");
 
             var result = config.GetConfig().GetSection("lang").AsEnumerable();
 
@@ -42,34 +44,44 @@ namespace VoiceRecogniseBot
                 }
             }
 
-            Console.WriteLine(langs_in_use.Count);
+            app_log.logger.Info($"Parsing lang from config is fine {langs_in_use} count {langs_in_use.Count}");
 
-            var botClient = new TelegramBotClient(config.GetConfig()["token"]);
-
-            var me = botClient.GetMeAsync().Result;
-            Console.WriteLine($"Hello, World! I am user {me.Id} and my name is {me.FirstName}.");
-
-            using CancellationTokenSource cts = new();
-
-            // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
-            ReceiverOptions receiverOptions = new()
+            if (config.GetConfig()["token"] != null)
             {
-                AllowedUpdates = Array.Empty<UpdateType>() // receive all update types except ChatMember related updates
-            };
+                app_log.logger.Debug($"Token is not null");
+                var botClient = new TelegramBotClient(config.GetConfig()["token"]);
 
-            botClient.StartReceiving(
-                updateHandler: HandleUpdateAsync,
-                pollingErrorHandler: HandlePollingErrorAsync,
-                receiverOptions: receiverOptions,
-                cancellationToken: cts.Token
-            );
+                var me = botClient.GetMeAsync().Result;
+                app_log.logger.Debug($"Recognised as {me.FirstName} and {me.Id}");
 
-            Console.WriteLine($"Start listening for @{me.Username}");
+                using CancellationTokenSource cts = new();
 
-            Console.ReadLine();
+                // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
+                ReceiverOptions receiverOptions = new()
+                {
+                    AllowedUpdates = Array.Empty<UpdateType>() // receive all update types except ChatMember related updates
+                };
 
-            // Send cancellation request to stop bot
-            cts.Cancel();
+                botClient.StartReceiving(
+                    updateHandler: HandleUpdateAsync,
+                    pollingErrorHandler: HandlePollingErrorAsync,
+                    receiverOptions: receiverOptions,
+                    cancellationToken: cts.Token
+                );
+
+          
+                app_log.logger.Debug($"Start listening for @{me.Username}");
+
+                Console.ReadLine();
+
+                // Send cancellation request to stop bot
+                cts.Cancel();
+            }
+            else
+            {
+                Console.WriteLine("Token is null! Check config");
+                return;
+            }
         }
 
         // HandleUpdateAsync method and other methods here...
@@ -89,7 +101,8 @@ namespace VoiceRecogniseBot
             if (update.Message is { } message)
             {
 
-                Console.WriteLine($"Update message: {update.Message.Type}");
+                app_log.logger.Debug($"New message update {message.Date } {message.Type}");
+
                 if (update.Message != null)
                 {
                     string text = null;
@@ -97,32 +110,43 @@ namespace VoiceRecogniseBot
 
                     if (update.Message.Voice != null || update.Message.Audio != null)
                     {
+                        app_log.logger.Debug($"New message update {message.Date} {message.Type}");
                         string fileId = update.Message.Voice?.FileId ?? update.Message.Audio?.FileId;
+                        app_log.logger.Debug($"File id:{fileId}");
                         await using Stream fileStream = System.IO.File.Create(destinationFilePath);
                         var file = await botClient.GetInfoAndDownloadFileAsync(fileId, fileStream, cancellationToken);
+                        app_log.logger.Debug($"File path:{destinationFilePath}");
                         fileStream.Close();
 
                         if (fileStream.CanWrite == false)
                         {
                             text = VoiceRecognise.RecogniseWav(destinationFilePath, currentlang);
+                            app_log.logger.Debug($"Getting text from Whisper {text}");
                         }
                     }
                     else if (update.Message.VideoNote != null || update.Message.Video != null)
                     {
+                        app_log.logger.Debug($"New message update {message.Date} {message.Type}");
                         string fileId = update.Message.VideoNote?.FileId ?? update.Message.Video?.FileId;
                         await using Stream fileStream = System.IO.File.Create(destinationFilePath);
+                        app_log.logger.Debug($"File id:{fileId}");
                         var file = await botClient.GetInfoAndDownloadFileAsync(fileId, fileStream, cancellationToken);
+                        app_log.logger.Debug($"File path:{destinationFilePath}");
                         fileStream.Close();
 
                         if (fileStream.CanWrite == false)
                         {
+                            
                             text = VoiceRecognise.RecogniseMp4(destinationFilePath, currentlang);
+                            app_log.logger.Debug($"Getting text from Whisper {text}");
                         }
                     }
 
                     if (!string.IsNullOrEmpty(text))
                     {
+                    
                         var message_return = string.Format($"Сообщение распознано! Содержимое \n {text}");
+                        app_log.logger.Debug($"send message! todo:custom message from config {message_return}");
                         await botClient.SendTextMessageAsync(
                          chatId: update.Message.Chat.Id,
                          text: message_return,
@@ -135,7 +159,7 @@ namespace VoiceRecogniseBot
 
             var msg = update.Message;
             var chatId = msg.Chat.Id;
-
+            app_log.logger.Debug($"update {msg} chat_id:{chatId}");
             if (msg.Text != null)
             {
                 Dictionary<string, Func<Task>> commandActions = new Dictionary<string, Func<Task>>
@@ -145,11 +169,12 @@ namespace VoiceRecogniseBot
                 Console.WriteLine("here");
                 var replyKeyboardMarkup = new ReplyKeyboardMarkup(new[]
                 {
-                    new KeyboardButton[] { "Set Lang", "Info", "About" },
+                    new KeyboardButton[] { "Set Lang", "Log", "About" },
                 })
                 {
                     ResizeKeyboard = true
                 };
+                 app_log.logger.Debug($"update {msg} chat_id:{chatId} send keyboard");
 
                 await botClient.SendTextMessageAsync(chatId, "Choose a response", replyMarkup: replyKeyboardMarkup, cancellationToken: cancellationToken);
             }
@@ -158,17 +183,20 @@ namespace VoiceRecogniseBot
             {
                 var langButtons = langs_in_use.Select(lang => new KeyboardButton(lang)).ToArray();
                 var langReplyKeyboard = new ReplyKeyboardMarkup(langButtons) { ResizeKeyboard = true };
-
+                    app_log.logger.Debug($"update {msg} chat_id:{chatId} send lang");
                 await botClient.SendTextMessageAsync(chatId, "Choose a response", replyMarkup: langReplyKeyboard, cancellationToken: cancellationToken);
             }
         },
         { "About", async () =>
             {
+                  app_log.logger.Debug($"update {msg} chat_id:{chatId} send about message");
                 await botClient.SendTextMessageAsync(chatId, "bot message", cancellationToken: cancellationToken);
+
             }
         },
         { "log", async () =>
             {
+
                 await botClient.SendTextMessageAsync(chatId, "bot message", cancellationToken: cancellationToken);
             }
         }
@@ -184,7 +212,7 @@ namespace VoiceRecogniseBot
                 {
                     currentlang = msg.Text;
                     var msg_value = $"Changed message recognition language to {currentlang}";
-
+                    app_log.logger.Debug($"update {msg} chat_id:{chatId} lang change to {currentlang}");
                     await botClient.SendTextMessageAsync(chatId, msg_value, cancellationToken: cancellationToken);
                 }
             }

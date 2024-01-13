@@ -10,12 +10,16 @@ namespace VoiceRecogniseBot
     /// </summary>
     internal class Config
     {
+
         /// <summary>
         /// Retrieves the application configuration settings.
         /// </summary>
         /// <returns>An instance of <see cref="IConfigurationRoot"/> containing the configuration settings.</returns>
+        /// 
+        private static TelegramBotLogger app_log = new TelegramBotLogger();
         internal IConfigurationRoot GetConfig()
         {
+            app_log.logger.Debug($"Requested config:\"appsettings.json\"");
             // Create a configuration builder
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
@@ -29,7 +33,7 @@ namespace VoiceRecogniseBot
         internal void UpdateConfig(IConfigurationRoot configuration)
         {
             JObject jsonConfig = JObject.Parse(File.ReadAllText("appsettings.json"));
-
+            app_log.logger.Debug($"Reading all json {jsonConfig}");
 
             // Loop through all properties in the JObject
             foreach (var property in jsonConfig.Properties())
@@ -39,14 +43,14 @@ namespace VoiceRecogniseBot
                 {
                     // Update the property value with the corresponding configuration value
                     property.Value = new JValue(configuration[property.Name]);
-                    Console.WriteLine($"Updated Property Name: {property.Name}, Value: {property.Value}");
+                    app_log.logger.Debug($"Updated Property Name: {property.Name}, Value: {property.Value}");
                 }
             }
 
 
             // Write the updated JObject back to the JSON file
             File.WriteAllText("appsettings.json", jsonConfig.ToString());
-
+            app_log.logger.Debug($"\"Configuration updated.\"");
             Console.WriteLine("Configuration updated.");
 
   

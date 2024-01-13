@@ -11,7 +11,7 @@ namespace VoiceRecogniseBot
     /// </summary>
     class WhisperAPI
     {
-        
+        private static TelegramBotLogger app_log = new TelegramBotLogger();
         private string modelName;
         /// <summary>
         /// Converts a model name to its corresponding GgmlType.
@@ -49,7 +49,8 @@ namespace VoiceRecogniseBot
             // Initialize Whisper API configuration
             var config = new Config();
             var modelNameFromConfig = config.GetConfig()["model"];
-            
+            app_log.logger.Debug($"Model from config {modelNameFromConfig}");
+
 
             // Check if a custom model name is specified in the configuration
             if (modelNameFromConfig != null)
@@ -61,11 +62,11 @@ namespace VoiceRecogniseBot
                 Console.WriteLine("Fallback to default model");
                 modelName = "ggml-base";
             }
-
+            app_log.logger.Debug($"Model name recognised from config {modelName}");
             // Download and save the model if it doesn't exist
             if (!File.Exists(modelName))
             {
-                Console.WriteLine(GgmlType.Tiny.ToString());
+                app_log.logger.Debug($"Clone model {modelName}");
                 using var modelStream = WhisperGgmlDownloader.GetGgmlModelAsync(ToModel(modelName)).Result;
                 using var fileWriter = File.OpenWrite(modelName);
                 modelStream.CopyTo(fileWriter);
@@ -80,7 +81,7 @@ namespace VoiceRecogniseBot
         /// <returns>The recognized text.</returns>
         internal string RecogniseWav(string file, string lang)
         {
-            Console.WriteLine($"Model is ok {lang}");
+            app_log.logger.Debug($"Model is ok! Lang in use: {lang}");
             using var whisperFactory = WhisperFactory.FromPath(modelName);
 
             using var processor = whisperFactory.CreateBuilder()
@@ -88,21 +89,23 @@ namespace VoiceRecogniseBot
                 .Build();
 
             var converter = new AudioToWav();
+            app_log.logger.Debug($"Convert file to wav 16khz {file}");
 
             var path = converter.OggToWav(file);
             using var fileStream = File.OpenRead(path);
 
             var output = processor.ProcessAsync(fileStream);
             StringBuilder sb = new StringBuilder();
+            app_log.logger.Debug($"Perparing string buffer for file {file}");
 
             foreach (var result in output.ToBlockingEnumerable())
             {
                 string resultValue = $"{result.Start}->{result.End}: {result.Text}";
 
                 sb.AppendLine(resultValue);
-                Console.WriteLine(resultValue);
+                app_log.logger.Debug($"Recognised value {resultValue}");
             }
-
+            app_log.logger.Info($"Function is ok! File {file} is parsed");
             return sb.ToString();
         }
 
@@ -114,7 +117,7 @@ namespace VoiceRecogniseBot
         /// <returns>The recognized text.</returns>
         internal string RecogniseMp4(string file, string lang)
         {
-            Console.WriteLine($"Model is ok {lang}");
+            app_log.logger.Debug($"Model is ok! Lang in use: {lang}");
             using var whisperFactory = WhisperFactory.FromPath(modelName);
 
             using var processor = whisperFactory.CreateBuilder()
@@ -122,21 +125,23 @@ namespace VoiceRecogniseBot
                 .Build();
 
             var converter = new AudioToWav();
-
+            app_log.logger.Debug($"Convert file to wav 16khz {file}");
             var path = converter.Mp4ToWav(file);
+
             using var fileStream = File.OpenRead(path);
 
             var output = processor.ProcessAsync(fileStream);
             StringBuilder sb = new StringBuilder();
+            app_log.logger.Debug($"Perparing string buffer for file {file}");
 
             foreach (var result in output.ToBlockingEnumerable())
             {
                 string resultValue = $"{result.Start}->{result.End}: {result.Text}";
 
                 sb.AppendLine(resultValue);
-                Console.WriteLine(resultValue);
+                app_log.logger.Info($"Function is ok! File {file} is parsed");
             }
-
+            app_log.logger.Info($"Function is ok! File {file} is parsed");
             return sb.ToString();
         }
     }
