@@ -45,14 +45,14 @@ After=network-online.target
 ExecStart=/usr/bin/VoiceRecogniseBot --command bot
 Restart=always
 RestartSec=5
-User=your_username_here
+User=voicebot
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-# Replace 'your_username_here' with the actual username
-sed -i 's/your_username_here/your_actual_username/' "$service_file"
+
+
 
 # Reload the systemd daemon to update the service list
 systemctl daemon-reload
@@ -63,6 +63,7 @@ systemctl enable voicerecognisebot.service
 # Start the service immediately
 systemctl start voicerecognisebot.service
 
+sudo useradd voicebot
 echo "VoiceRecogniseBot service has been configured and started."
 
 echo -e "\nEnjoy using VoiceRecogniseBot!"

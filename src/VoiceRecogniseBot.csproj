@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	  <SelfContained>true</SelfContained>
-	  <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+	  <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
   </PropertyGroup>
 	
 	

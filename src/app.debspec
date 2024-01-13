@@ -9,7 +9,7 @@ OPTDIR = opt/VoiceRecogniseBot
 # Package control file
 package: voicerecognisebot
 version: 2.0
-architecture: amd64
+architecture: arm64
 
 maintainer: Example Developer <developer@example.com>
 homepage: https://example.com/myapp
