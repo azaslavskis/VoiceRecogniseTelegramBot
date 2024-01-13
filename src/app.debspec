@@ -1,0 +1,34 @@
+# Spec file options
+basepath: ..
+outdir: bin
+
+# Common directory variables
+ETCDIR = etc/VoiceRecogniseBot
+OPTDIR = opt/VoiceRecogniseBot
+
+# Package control file
+package: voicerecognisebot
+version: 2.0
+architecture: amd64
+
+maintainer: Example Developer <developer@example.com>
+homepage: https://example.com/myapp
+description: My application
+ My application can do truly miraculous things, read the user's mind and works
+ perfectly in every aspect.
+ .
+ If you ever wanted your computer to understand you and be helpful, then this
+ little tool is all you need.
+
+postinst: src\scripts\postinst    text
+
+# Startup scripts and configuration
+file:     C:\Users\Alex\source\repos\alex5250\VoiceRecogniseTelegramBot\src\bin\Release\net8.0\linux-x64\publish\VoiceRecognise.sh                 /usr/bin   755
+
+
+# Application files
+file:     C:\Users\Alex\source\repos\alex5250\VoiceRecogniseTelegramBot\src\bin\Release\net8.0\linux-x64\publish\*         {OPTDIR}/     755
+
+
+# Create log directory
+dir:                                           var/log/myapp

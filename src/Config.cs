@@ -23,8 +23,8 @@ namespace VoiceRecogniseBot
             // Create a configuration builder
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddJsonFile("/etc/voicerecognisebot/appsettings.json", optional: true, reloadOnChange: true);
             // Build and return the configuration
             IConfigurationRoot configuration = builder.Build();
             return configuration;
