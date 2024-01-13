@@ -19,7 +19,7 @@ namespace VoiceRecogniseBot
     /// </summary>
     internal class TelegramAPI
     {
-        public static string currentlang = "eng";
+        public static string currentlang = "";
         private List<string> langs_in_use = new List<string>();
         private WhisperAPI VoiceRecognise = new WhisperAPI();
 
@@ -28,7 +28,10 @@ namespace VoiceRecogniseBot
         /// </summary>
         public TelegramAPI()
         {
+
             var config = new Config();
+            if (config.GetConfig()["default_lang"] != null) currentlang = config.GetConfig()["default_lang"];
+
             var result = config.GetConfig().GetSection("lang").AsEnumerable();
 
             if (result.Any())
@@ -83,7 +86,7 @@ namespace VoiceRecogniseBot
         {
 
             // Only process Message updates: https://core.telegram.org/bots/api#message
-            if (update.Message is  { } message)
+            if (update.Message is { } message)
             {
 
                 Console.WriteLine($"Update message: {update.Message.Type}");
@@ -104,11 +107,11 @@ namespace VoiceRecogniseBot
 
                     fileStream.Close();
 
-                    if ( destinationFilePath != null && fileStream.CanWrite == false)
+                    if (destinationFilePath != null && fileStream.CanWrite == false)
                     {
                         //currentlang
-                        var text  = VoiceRecognise.RecogniseWav(destinationFilePath, currentlang);
-                        var message_return  = string.Format($"Сообщение распознанно! Содержимое \n {text}");
+                        var text = VoiceRecognise.RecogniseWav(destinationFilePath, currentlang);
+                        var message_return = string.Format($"Сообщение распознанно! Содержимое \n {text}");
                         await botClient.SendTextMessageAsync(
                          chatId: update.Message.Chat.Id,
                          text: message_return,
@@ -209,7 +212,7 @@ namespace VoiceRecogniseBot
                         }
                         ReplyKeyboardMarkup langreplyKeyboard = new ReplyKeyboardMarkup(array)
                         {
-                            ResizeKeyboard = true        
+                            ResizeKeyboard = true
                         };
                         Message langsentMessage = await botClient.SendTextMessageAsync(
                             chatId: chatId,
@@ -224,10 +227,10 @@ namespace VoiceRecogniseBot
                           cancellationToken: cancellationToken);
                         break;
                     case "log":
-                         await botClient.SendTextMessageAsync(
-                          chatId: chatId,
-                          text: "bot message",
-                          cancellationToken: cancellationToken);
+                        await botClient.SendTextMessageAsync(
+                         chatId: chatId,
+                         text: "bot message",
+                         cancellationToken: cancellationToken);
                         break;
                 }
 
@@ -268,3 +271,4 @@ namespace VoiceRecogniseBot
         }
 
     }
+}
