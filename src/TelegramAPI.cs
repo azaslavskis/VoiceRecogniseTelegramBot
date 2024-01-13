@@ -110,11 +110,13 @@ namespace VoiceRecogniseBot
 
                     if (update.Message.Voice != null || update.Message.Audio != null)
                     {
+                    
                         app_log.logger.Debug($"New message update {message.Date} {message.Type}");
                         string fileId = update.Message.Voice?.FileId ?? update.Message.Audio?.FileId;
                         app_log.logger.Debug($"File id:{fileId}");
                         await using Stream fileStream = System.IO.File.Create(destinationFilePath);
                         var file = await botClient.GetInfoAndDownloadFileAsync(fileId, fileStream, cancellationToken);
+                        await botClient.SendTextMessageAsync(update.Message.Chat.Id, "In progress", cancellationToken: cancellationToken);
                         app_log.logger.Debug($"File path:{destinationFilePath}");
                         fileStream.Close();
 
@@ -131,6 +133,7 @@ namespace VoiceRecogniseBot
                         await using Stream fileStream = System.IO.File.Create(destinationFilePath);
                         app_log.logger.Debug($"File id:{fileId}");
                         var file = await botClient.GetInfoAndDownloadFileAsync(fileId, fileStream, cancellationToken);
+                        await botClient.SendTextMessageAsync(update.Message.Chat.Id, "In progress", cancellationToken: cancellationToken);
                         app_log.logger.Debug($"File path:{destinationFilePath}");
                         fileStream.Close();
 
