@@ -90,6 +90,7 @@ namespace VoiceRecogniseBot
 
 
                 }
+                config.UpdateConfig(config_in_use);
             }
 
             if (!string.IsNullOrEmpty(options.Token))
@@ -102,7 +103,8 @@ namespace VoiceRecogniseBot
                     config_in_use["token"] = options.Token;
 
                 }
-               
+                config.UpdateConfig(config_in_use);
+
             }
 
             if (!string.IsNullOrEmpty(options.Lang))
@@ -115,6 +117,7 @@ namespace VoiceRecogniseBot
                     config_in_use["lang"] = options.Lang;
 
                 }
+                config.UpdateConfig(config_in_use);
             }
 
             if (!string.IsNullOrEmpty(options.DefaultLang))
@@ -133,10 +136,11 @@ namespace VoiceRecogniseBot
 
 
 
+
                 config.UpdateConfig(config_in_use);
 
-              
             }
+
         }
     }
 }
