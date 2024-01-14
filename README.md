@@ -30,7 +30,7 @@ System.IO.FileNotFoundException: Native Library not found in path /opt/VoiceReco
 
 run: 
 ```
-sudo mkdir -p  /opt/VoiceRecogniseBot/runtimes/linux-x64 && sudo cp /opt/VoiceRecogniseBot/libwhisper.so /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so && ls /opt/VoiceRecogniseBot/runtimes/linux-x64
+wget https://github.com/alex5250/VoiceRecogniseTelegramBot/raw/main/libwhisper.so && sudo mkdir -p  /opt/VoiceRecogniseBot/runtimes/linux-x64 && sudo cp libwhisper.so /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so && ls /opt/VoiceRecogniseBot/runtimes/linux-x64
 ```
 output should be: 
 libwhisper.so 
