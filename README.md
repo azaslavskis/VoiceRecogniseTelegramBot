@@ -19,7 +19,14 @@
 
 
 # known bugs 
-libwhisper.so is not found.
+```
+System.IO.FileNotFoundException: Native Library not found in path /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so. Verify you have have included the native Whisper library in your application, or install the default libraries with the Whisper.net.Runtime NuGet.
+   at Whisper.net.LibraryLoader.NativeLibraryLoader.LoadNativeLibrary(String path, Boolean bypassLoading)
+   at Whisper.net.WhisperFactory.<>c.<.cctor>b__11_0()
+   at System.Lazy`1.ViaFactory(LazyThreadSafetyMode mode)
+   at System.Lazy`1.ExecutionAndPublication(LazyHelper executionAndPublication, Boolean useDefaultConstructor)
+   at System.Lazy`1.CreateValue()
+```
 
 run: 
 ```
