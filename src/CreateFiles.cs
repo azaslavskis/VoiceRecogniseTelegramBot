@@ -65,12 +65,16 @@ namespace VoiceRecogniseBot
                         }
 
                         File.WriteAllText(filePath, """
-                                                    {
-                                                        "model": "whisper-large",
-                                                        "token": "xxxxxxx",
-                                                        "lang": ["en","lv"],
-                                                        "defaultlang": "en"
-                                                    }
+                                                   {
+                                                          "model": "ggml-base.bin",
+                                                          "token": "xxxx",
+                                                          "lang": [
+                                                            "RU",
+                                                            "LV",
+                                                            "EN"
+                                                          ],
+                                                          "default_lang": "RU"
+                                                        }
                                                     """);
 
                         Logger.Info($"Created default configuration file: {filePath}");
