@@ -23,8 +23,8 @@ namespace VoiceRecogniseBot
             // Create a configuration builder
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-                .AddJsonFile("/etc/voicerecognisebot/appsettings.json", optional: true, reloadOnChange: true);
+                //.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddJsonFile("/etc/voicerecognisebot/appsettings.json", optional: false, reloadOnChange: true);
             // Build and return the configuration
             IConfigurationRoot configuration = builder.Build();
             return configuration;
@@ -32,9 +32,9 @@ namespace VoiceRecogniseBot
 
         internal void UpdateConfig(IConfigurationRoot configuration)
         {
-            JObject jsonConfig = JObject.Parse(File.ReadAllText("appsettings.json"));
+            JObject jsonConfig = JObject.Parse(File.ReadAllText("/etc/voicerecognisebot/appsettings.json"));
             app_log.logger.Debug($"Reading all json {jsonConfig}");
-
+           // Console.WriteLine($"Reading all json {jsonConfig}");
             // Loop through all properties in the JObject
             foreach (var property in jsonConfig.Properties())
             {
@@ -49,7 +49,7 @@ namespace VoiceRecogniseBot
 
 
             // Write the updated JObject back to the JSON file
-            File.WriteAllText("appsettings.json", jsonConfig.ToString());
+            File.WriteAllText("/etc/voicerecognisebot/appsettings.json", jsonConfig.ToString());
             app_log.logger.Debug($"\"Configuration updated.\"");
             Console.WriteLine("Configuration updated.");
 

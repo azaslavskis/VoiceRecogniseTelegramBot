@@ -79,7 +79,7 @@ namespace VoiceRecogniseBot
         /// <param name="file">The path to the Ogg audio file.</param>
         /// <param name="lang">The language for speech recognition.</param>
         /// <returns>The recognized text.</returns>
-        internal string RecogniseWav(string file, string lang)
+        internal string? RecogniseWav(string file, string? lang)
         {
             app_log.logger.Debug($"Model is ok! Lang in use: {lang}");
             using var whisperFactory = WhisperFactory.FromPath(modelName);
@@ -115,7 +115,7 @@ namespace VoiceRecogniseBot
         /// <param name="file">The path to the MP4 audio file.</param>
         /// <param name="lang">The language for speech recognition.</param>
         /// <returns>The recognized text.</returns>
-        internal string RecogniseMp4(string file, string lang)
+        internal string? RecogniseMp4(string file, string? lang)
         {
             app_log.logger.Debug($"Model is ok! Lang in use: {lang}");
             using var whisperFactory = WhisperFactory.FromPath(modelName);

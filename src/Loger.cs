@@ -16,7 +16,7 @@ namespace VoiceRecogniseBot
             // Create a file target
             var fileTarget = new FileTarget("logfile")
             {
-                FileName = "log.txt"
+                FileName = "/var/log/voicerecognisebot/log.txt"
             };
 
             // Add the file target to the configuration

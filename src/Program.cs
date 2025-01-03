@@ -3,6 +3,7 @@ using CommandLine;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.Configuration;
 using NLog;
+using Velopack;
 
 namespace VoiceRecogniseBot
 {
@@ -13,29 +14,30 @@ namespace VoiceRecogniseBot
         public class Options
         {
             [Option('c', "command", Required = false, HelpText = "Specify the command to run.")]
-            public string Command { get; set; }
+            public required string Command { get; set; }
 
             // Add other options for configuration edit commands here if needed
             [Option('m', "model", Required = false, HelpText = "Set the model name.")]
-            public string Model { get; set; }
+            public required string Model { get; set; }
 
             [Option('t', "token", Required = false, HelpText = "Set the token.")]
-            public string Token { get; set; }
+            public required string Token { get; set; }
 
             [Option('l', "lang", Required = false, HelpText = "Set the languages.")]
-            public string Lang { get; set; }
+            public required string Lang { get; set; }
 
             [Option('d', "default-lang", Required = false, HelpText = "Set the default language.")]
-            public string DefaultLang { get; set; }
+            public required string DefaultLang { get; set; }
         }
 
         public static void Main(string[] args)
         {
 
+            
+            VelopackApp.Build().Run();
             app_log.logger.Debug("First message from logger");
-
-
-
+            AppConfiguration appconfig = new AppConfiguration();
+            appconfig.BuildConfiguration();
             Parser.Default.ParseArguments<Options>(args)
                 .WithParsed(o =>
                 {
@@ -67,8 +69,7 @@ namespace VoiceRecogniseBot
 
         private static void RunBot()
         {
-            var telegram = new TelegramAPI();
-            
+            var telegram = new TelegramApi();
         }
 
         private static void UpdateConfiguration(Options options)
@@ -133,12 +134,7 @@ namespace VoiceRecogniseBot
 
              
                 }
-
-
-
-
                 config.UpdateConfig(config_in_use);
-
             }
 
         }
