@@ -64,17 +64,18 @@ namespace VoiceRecogniseBot
                             Logger.Info($"Created directory: {directory}");
                         }
 
-                        File.WriteAllText(filePath, """
-                                                   {
-                                                          "model": "ggml-base.bin",
-                                                          "token": "xxxx",
-                                                          "lang": [
-                                                            "RU",
-                                                            "LV",
-                                                            "EN"
-                                                          ],
-                                                          "default_lang": "RU"
-                                                        }
+                        File.WriteAllText(filePath, """ 
+                                                         {
+                                                      "model": "ggml-base.bin",
+                                                      "token": "xxxx",
+                                                      "lang": [
+                                                        "RU",
+                                                        "LV",
+                                                        "EN"
+                                                      ],
+                                                      "default_lang": "EN"
+                                                    } 
+                                                          
                                                     """);
 
                         Logger.Info($"Created default configuration file: {filePath}");
