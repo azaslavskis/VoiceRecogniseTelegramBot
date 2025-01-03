@@ -47,7 +47,7 @@ namespace VoiceRecogniseBot
             {
                 string[] configFiles =
                 {
-                    "appsettings.json",
+                    //"appsettings.json",
                     "/etc/voicerecognisebot/appsettings.json"
                 };
 
