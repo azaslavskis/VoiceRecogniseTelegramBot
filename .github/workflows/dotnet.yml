@@ -86,11 +86,7 @@ jobs:
         cd src
         dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true -o ../publish/windows
 
-      # Build for macOS
-    - name: Build for macOS
-      run: |
-        cd src
-        dotnet publish -c Release --self-contained -r osx-x64  -p:PublishSingleFile=true-o ../publish/macos
+  
 
       # Upload all build artifacts
     - name: Upload Artifacts
