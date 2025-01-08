@@ -11,8 +11,53 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
+    - name: Update config
+      uses: actions/checkout@v1
+         # Increment version
+    - name: Increment Version
+      id: version
+      run: |
+        VERSION_FILE="version.txt"
+        
+        # Check if version.txt exists, if not create it
+        if [ ! -f $VERSION_FILE ]; then
+          echo "1.0.0" > $VERSION_FILE
+        fi
+
+        # Read the current version
+        current_version=$(cat $VERSION_FILE)
+
+        # Increment the patch version (e.g., 1.0.0 -> 1.0.1)
+        IFS='.' read -r -a version_parts <<< "$current_version"
+        patch=${version_parts[2]}
+        patch=$((patch + 1))
+
+        # Construct new version and write it to version.txt
+        new_version="${version_parts[0]}.${version_parts[1]}.$patch"
+        echo "New version: $new_version"
+        echo $new_version > $VERSION_FILE
+    - name: Run check of pwd
+      run: pwd
+    - name: Run check of what's in pwd
+      run: ls
+      
+    - name: switching from HTTPS to SSH
+      run: git remote set-url origin ${{ secrets.ssh }}
+    - name: check for changes
+      run: git status
+    - name: stage changed files
+      run: git add .
+    - name: commit changed files
+      run: git commit -m "Auto updating version.txt"
+    - name: fetch from master
+      run: git fetch origin master
+    - name: push code to master
+      run: git push origin HEAD:master
+
+
+
+    
     # Checkout the repository
     - name: Checkout Code
       uses: actions/checkout@v3
@@ -39,53 +84,6 @@ jobs:
     - name: Update PATH for Dotnet Tools
       run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-    # Increment version
-    - name: Increment Version
-      id: version
-      run: |
-        VERSION_FILE="version.txt"
-        
-        # Check if version.txt exists, if not create it
-        if [ ! -f $VERSION_FILE ]; then
-          echo "1.0.0" > $VERSION_FILE
-        fi
-
-        # Read the current version
-        current_version=$(cat $VERSION_FILE)
-
-        # Increment the patch version (e.g., 1.0.0 -> 1.0.1)
-        IFS='.' read -r -a version_parts <<< "$current_version"
-        patch=${version_parts[2]}
-        patch=$((patch + 1))
-
-        # Construct new version and write it to version.txt
-        new_version="${version_parts[0]}.${version_parts[1]}.$patch"
-        echo "New version: $new_version"
-        echo $new_version > $VERSION_FILE
-
-        # Switching from HTTPS to SSH
-        git remote set-url origin ${{ secrets.ssh }}
-        
-        # Check for changes in the repository
-        git status
-        
-        # Stage changed files
-        git add .
-        
-        # Commit the changes
-        git commit -m "Auto updating version.txt"
-        
-        # Fetch from master
-        git fetch origin master
-        
-        # Push the changes to the master branch
-        git push origin HEAD:master
-
-
-
-
-        # Export version for use in the build
-        echo "::set-output name=version::$new_version"
 
     # Build for Linux
     - name: Build for Linux
