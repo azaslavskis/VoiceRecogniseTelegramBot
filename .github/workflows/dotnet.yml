@@ -63,12 +63,25 @@ jobs:
         echo "New version: $new_version"
         echo $new_version > $VERSION_FILE
 
+        # Switching from HTTPS to SSH
         git remote set-url origin ${{ secrets.ssh }}
+        
+        # Check for changes in the repository
         git status
+        
+        # Stage changed files
         git add .
-        git commit -m "update version.txt"
+        
+        # Commit the changes
+        git commit -m "Auto updating version.txt"
+        
+        # Fetch from master
         git fetch origin master
+        
+        # Push the changes to the master branch
         git push origin HEAD:master
+
+
 
 
         # Export version for use in the build
