@@ -7,14 +7,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-
+      # Step to write SSH key from secret to a file
     - run: 'echo "$SSH_KEY" > key'
       shell: bash
       env:
         SSH_KEY: ${{ secrets.DEPLOY_KEY }}
-    - name: Update config
+
+      # Checkout repository to work with the code
+    - name: Checkout Repository
       uses: actions/checkout@v3
-         # Increment version
+
+      # Increment the version
     - name: Increment Version
       id: version
       run: |
@@ -37,19 +40,18 @@ jobs:
         new_version="${version_parts[0]}.${version_parts[1]}.$patch"
         echo "New version: $new_version"
         echo $new_version > $VERSION_FILE
-    - name: Run check of pwd
-      run: pwd
-    - name: Commit
-    - run: |
-          date > generated.txt
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add .
-          git commit -m "generated"
-          git push
-      
+        echo "::set-output name=version::$new_version"
 
-    # Verify commit message for "build_releases"
+      # Commit the version change and push
+    - name: Commit Version Update
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add version.txt
+        git commit -m "Update version to ${{ steps.version.outputs.version }}"
+        git push
+
+      # Check for commit message "build_releases"
     - name: Check Commit Message
       run: |
         if ! git log -1 --pretty=%B | grep -iq "build_releases"; then
@@ -57,41 +59,40 @@ jobs:
           exit 0
         fi
 
-    # Setup .NET environment
+      # Setup .NET environment
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '8.0' # Adjust to your required .NET version
+        dotnet-version: '8.0'
 
-    # Install vpk tool
+      # Install vpk tool
     - name: Install VPK (Linux only)
       run: dotnet tool install --global vpk
 
-    # Add dotnet tools to PATH
+      # Add dotnet tools to PATH
     - name: Update PATH for Dotnet Tools
       run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-
-    # Build for Linux
+      # Build for Linux
     - name: Build for Linux
       run: |
         cd src
         dotnet publish -c Release --self-contained -r linux-x64 -o ../publish/linux
         vpk pack -u VoiceRecogniseBot-linux -v ${{ steps.version.outputs.version }} -p ../publish/linux
 
-    # Build for Windows
+      # Build for Windows
     - name: Build for Windows
       run: |
         cd src
         dotnet publish -c Release --self-contained -r win-x64 -o ../publish/windows
 
-    # Build for macOS
+      # Build for macOS
     - name: Build for macOS
       run: |
         cd src
         dotnet publish -c Release --self-contained -r osx-x64 -o ../publish/macos
 
-    # Upload all artifacts
+      # Upload all build artifacts
     - name: Upload Artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -103,13 +104,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Download artifacts
+      # Download artifacts from build job
     - name: Download Artifacts
       uses: actions/download-artifact@v3
       with:
         name: VoiceRecogniseBot-${{ needs.build.outputs.version }}
 
-    # Create GitHub release and upload artifacts
+      # Create a GitHub release and upload the assets
     - name: Create Release
       uses: actions/create-release@v1
       env:
