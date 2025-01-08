@@ -95,31 +95,6 @@ jobs:
         name: VoiceRecogniseBot-${{ steps.version.outputs.version }}
         path: ./publish
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      # Download artifacts from build job
-    - name: Download Artifacts
-      uses: actions/download-artifact@v3
-      with:
-        name: VoiceRecogniseBot${{ needs.build.outputs.version }}
-
-      # Create a GitHub release and upload the assets
-    - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ needs.build.outputs.version }}
-        release_name: Release ${{ needs.build.outputs.version }}
-        body: |
-          This is the release for version ${{ needs.build.outputs.version }}.
-          - Built for Linux, Windows, and macOS.
-        draft: false
-        prerelease: false
-
     - name: Upload Release Assets
       uses: actions/upload-release-asset@v1
       env:
@@ -127,5 +102,8 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./publish
-        asset_name: VoiceRecogniseBot-${{ needs.build.outputs.version }}.zip
+        asset_name: VoiceRecogniseBot-${{ steps.version.outputs.version }}
         asset_content_type: application/zip
+
+ 
+
