@@ -77,20 +77,20 @@ jobs:
     - name: Build for Linux
       run: |
         cd src
-        dotnet publish -c Release --self-contained -r linux-x64 -o ../publish/linux
+        dotnet publish -c Release --self-contained -r linux-x64 -p:PublishSingleFile=true -o ../publish/linux
         vpk pack -u VoiceRecogniseBot -v ${{ steps.version.outputs.version }} -p ../publish/linux
 
       # Build for Windows
     - name: Build for Windows
       run: |
         cd src
-        dotnet publish -c Release --self-contained -r win-x64 -o ../publish/windows
+        dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true -o ../publish/windows
 
       # Build for macOS
     - name: Build for macOS
       run: |
         cd src
-        dotnet publish -c Release --self-contained -r osx-x64 -o ../publish/macos
+        dotnet publish -c Release --self-contained -r osx-x64  -p:PublishSingleFile=true-o ../publish/macos
 
       # Upload all build artifacts
     - name: Upload Artifacts
@@ -108,7 +108,7 @@ jobs:
     - name: Download Artifacts
       uses: actions/download-artifact@v3
       with:
-        name: VoiceRecogniseBot-${{ needs.build.outputs.version }}
+        name: VoiceRecogniseBot${{ needs.build.outputs.version }}
 
       # Create a GitHub release and upload the assets
     - name: Create Release
