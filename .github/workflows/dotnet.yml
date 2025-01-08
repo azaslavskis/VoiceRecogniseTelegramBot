@@ -95,15 +95,7 @@ jobs:
         name: VoiceRecogniseBot-${{ steps.version.outputs.version }}
         path: ./publish
 
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./publish
-        asset_name: VoiceRecogniseBot-${{ steps.version.outputs.version }}
-        asset_content_type: application/zip
+
 
  
 
