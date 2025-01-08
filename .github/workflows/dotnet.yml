@@ -1,13 +1,8 @@
 name: Build and Publish
-
-on:
-  push:
-    tags:
-      - 'v*' # Trigger only on tags that start with 'v'
-    branches:
-      - main # Trigger on pushes to the main branch for commit message filtering
-  workflow_dispatch:
-
+on: push
+permissions:
+  contents: write
+  
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +13,7 @@ jobs:
       env:
         SSH_KEY: ${{ secrets.DEPLOY_KEY }}
     - name: Update config
-      uses: actions/checkout@v1
+      uses: actions/checkout@v3
          # Increment version
     - name: Increment Version
       id: version
@@ -44,29 +39,15 @@ jobs:
         echo $new_version > $VERSION_FILE
     - name: Run check of pwd
       run: pwd
-    - name: Run check of what's in pwd
-      run: ls
+    - name: Commit
+    - run: |
+          date > generated.txt
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .
+          git commit -m "generated"
+          git push
       
-  
-    - name: check for changes
-      run: git status
-    - name: make build
-      run:   git config --global user.name "github-actions" &&    git config --global user.email "github-actions@github.com"
-    - name: stage changed files
-      run: git add .
-    - name: commit changed files
-      run: git commit -m "Auto updating version.txt"
-    #- name: fetch from master
-      #run: git fetch origin master
-    - name: push code to master
-      run: git push .
-
-
-
-    
-    # Checkout the repository
-    - name: Checkout Code
-      uses: actions/checkout@v3
 
     # Verify commit message for "build_releases"
     - name: Check Commit Message
