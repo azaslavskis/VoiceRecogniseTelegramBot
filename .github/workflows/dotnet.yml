@@ -50,6 +50,8 @@ jobs:
   
     - name: check for changes
       run: git status
+    - name: make build
+      run:   git config --global user.name "github-actions" &&    git config --global user.email "github-actions@github.com"
     - name: stage changed files
       run: git add .
     - name: commit changed files
