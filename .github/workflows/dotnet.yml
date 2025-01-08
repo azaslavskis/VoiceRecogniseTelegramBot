@@ -12,6 +12,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+
+    - run: 'echo "$SSH_KEY" > key'
+      shell: bash
+      env:
+        SSH_KEY: ${{secrets.SSH_KEY}}
     - name: Update config
       uses: actions/checkout@v1
          # Increment version
