@@ -78,7 +78,7 @@ jobs:
       run: |
         cd src
         dotnet publish -c Release --self-contained -r linux-x64 -o ../publish/linux
-        vpk pack -u VoiceRecogniseBot-linux -v ${{ steps.version.outputs.version }} -p ../publish/linux
+        vpk pack -u VoiceRecogniseBot -v ${{ steps.version.outputs.version }} -p ../publish/linux
 
       # Build for Windows
     - name: Build for Windows
