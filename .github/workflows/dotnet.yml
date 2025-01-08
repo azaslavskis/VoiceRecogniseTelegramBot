@@ -16,7 +16,7 @@ jobs:
     - run: 'echo "$SSH_KEY" > key'
       shell: bash
       env:
-        SSH_KEY: ${{secrets.SSH_KEY}}
+        SSH_KEY: ${{ secrets.DEPLOY_KEY }}
     - name: Update config
       uses: actions/checkout@v1
          # Increment version
@@ -48,7 +48,7 @@ jobs:
       run: ls
       
     - name: switching from HTTPS to SSH
-      run: git remote set-url origin ${{ secrets.ssh }}
+      run: git remote set-url origin ${{ secrets.DEPLOY_KEY }}
     - name: check for changes
       run: git status
     - name: stage changed files
