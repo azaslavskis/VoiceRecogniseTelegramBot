@@ -63,12 +63,13 @@ jobs:
         echo "New version: $new_version"
         echo $new_version > $VERSION_FILE
 
-        # Commit the updated version.txt
-        git config --global user.name "github-actions"
-        git config --global user.email "github-actions@github.com"
-        git add $VERSION_FILE
-        git commit -m "Increment version to $new_version"
-        git push
+        git remote set-url origin ${{ secrets.ssh }}
+        git status
+        git add .
+        git commit -m "update version.txt"
+        git fetch origin master
+        git push origin HEAD:master
+
 
         # Export version for use in the build
         echo "::set-output name=version::$new_version"
