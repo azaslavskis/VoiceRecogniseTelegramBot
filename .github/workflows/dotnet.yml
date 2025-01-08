@@ -47,8 +47,7 @@ jobs:
     - name: Run check of what's in pwd
       run: ls
       
-    - name: switching from HTTPS to SSH
-      run: git remote set-url origin ${{ secrets.DEPLOY_KEY }}
+  
     - name: check for changes
       run: git status
     - name: stage changed files
