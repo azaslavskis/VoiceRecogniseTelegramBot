@@ -42,18 +42,21 @@ jobs:
     # Build for Linux
     - name: Build for Linux
       run: |
-        dotnet publish -c Release --self-contained -r linux-x64 -o ./publish/linux
-        vpk pack -u VoiceRecogniseBot-linux -v ${{ github.ref_name }} -p ./publish/linux
+        cd src
+        dotnet publish -c Release --self-contained -r linux-x64 -o ../publish/linux
+        vpk pack -u VoiceRecogniseBot-linux -v ${{ github.ref_name }} -p ../publish/linux
 
     # Build for Windows
     - name: Build for Windows
       run: |
-        dotnet publish -c Release --self-contained -r win-x64 -o ./publish/windows
+        cd src
+        dotnet publish -c Release --self-contained -r win-x64 -o ../publish/windows
 
     # Build for macOS
     - name: Build for macOS
       run: |
-        dotnet publish -c Release --self-contained -r osx-x64 -o ./publish/macos
+        cd src
+        dotnet publish -c Release --self-contained -r osx-x64 -o ../publish/macos
 
     # Upload all artifacts
     - name: Upload Artifacts
