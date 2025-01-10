@@ -3,6 +3,7 @@ using System.IO;
 using NAudio.Wave;
 using Concentus.Oggfile;
 using Concentus.Structs;
+using NReco.VideoConverter;
 
 namespace VoiceRecogniseBot
 {  /// <summary>
@@ -54,25 +55,9 @@ namespace VoiceRecogniseBot
         {
             int outRate = 16000; // Desired sample rate
             var outFile = Path.GetTempFileName();
-
-            // Create a MediaFoundationReader for the input MP4 file
-            using (var reader = new MediaFoundationReader(mp4FilePath))
-            {
-                // Create a new WaveFormat with the desired sample rate and the same number of channels as the input
-                var outFormat = new WaveFormat(outRate, reader.WaveFormat.Channels);
-
-                // Create a MediaFoundationResampler to resample the audio to the desired format
-                using (var resampler = new MediaFoundationResampler(reader, outFormat))
-                {
-                    // Optionally, you can set the resampler quality (60 is a good default)
-                    // resampler.ResamplerQuality = 60;
-
-                    // Create a WaveFileWriter to write the resampled audio to a WAV file
-                    WaveFileWriter.CreateWaveFile(outFile, resampler);
-                }
-            }
-
-            return outFile;
+            var ffMpeg = new NReco.VideoConverter.FFMpegConverter();
+            ffMpeg.ConvertMedia(mp4FilePath, outFile, Format.ogg);
+            return    OggToWav(outFile);
         }
 
         /// <summary>

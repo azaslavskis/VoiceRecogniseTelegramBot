@@ -95,7 +95,9 @@ namespace VoiceRecogniseBot
             {
 
                 AppLog.logger.Debug($"New message update {message.Date } {message.Type}");
-
+                var statsManager = new StatsManager();
+                statsManager.IncrementMessageCount();
+               
                 if (update.Message != null)
                 {
                     string? text = null;

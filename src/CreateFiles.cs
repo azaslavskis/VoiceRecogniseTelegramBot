@@ -81,6 +81,8 @@ namespace VoiceRecogniseBot
                         Logger.Info($"Created default configuration file: {filePath}");
                     }
                 }
+                
+                
             }
             catch (Exception ex)
             {

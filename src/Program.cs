@@ -11,6 +11,7 @@ namespace VoiceRecogniseBot
     {
         private static Config config = new Config();
         private static TelegramBotLogger app_log = new TelegramBotLogger();
+        private static WebUIAPI api = new WebUIAPI();
         public class Options
         {
             [Option('c', "command", Required = false, HelpText = "Specify the command to run.")]
@@ -30,6 +31,15 @@ namespace VoiceRecogniseBot
             public required string DefaultLang { get; set; }
         }
 
+        private static async void  RunBotAsync()
+        {
+             RunBot();
+        }
+        
+        private static async void  WebApiServer()
+        {
+             api.Run();
+        }
         public static void Main(string[] args)
         {
 
@@ -47,7 +57,13 @@ namespace VoiceRecogniseBot
                         switch (o.Command.ToLower())
                         {
                             case "bot":
-                                RunBot();
+                                
+                                Thread apiWebServer= new Thread(new ThreadStart(WebApiServer));
+                                Thread TelegramBot = new Thread(new ThreadStart(RunBotAsync));
+                                apiWebServer.Start();
+                                TelegramBot.Start();
+                             
+                             
                                 break;
                             case "update_config":
                                 UpdateConfiguration(o);
