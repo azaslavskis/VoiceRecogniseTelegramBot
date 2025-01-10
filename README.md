@@ -1,38 +1,114 @@
-# VoiceRecogniseBot
 
-# Sample appsettings.json
+# **VoiceRecogniseBot Documentation**
 
-`
-    {
-        "model": "ggml-base.bin",
-        "token": "xxxx",
-        "lang": [
-            "RU",
-            "LT",
-            "EN"
-        ],
-        "default_lang": "EN"
-    }
-`
+## **Overview**
 
-# default paths 
+**VoiceRecogniseBot** is a modern, cross-platform voice recognition tool built using C# and Whisper. It features an intuitive CLI, easy configuration via JSON, and robust AppImage support for hassle-free deployment.
 
+---
 
-# known bugs 
+## **Features**
+- **AppImage Distribution**: Single binary for simplified installation.
+- **Easy Configuration**: Plug-and-play setup with `appsettings.json`.
+- **Powerful CLI API**: Manage the bot, update settings, and run commands from the terminal.
+- **Cross-Platform**: Runs seamlessly on Windows, Linux, and macOS.
+- **Whisper Integration**: State-of-the-art speech recognition for high accuracy.
+- **Future Enhancements**:
+  - API for programmatic interactions.
+  - WebUI for user-friendly management.
+
+---
+
+## **Installation**
+
+### **1. AppImage Installation**
+Download and execute the AppImage:
+
+```bash
+wget https://example.com/VoiceRecogniseBot.AppImage
+chmod +x VoiceRecogniseBot.AppImage
+sudo ./VoiceRecogniseBot.AppImage
 ```
-System.IO.FileNotFoundException: Native Library not found in path /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so. Verify you have have included the native Whisper library in your application, or install the default libraries with the Whisper.net.Runtime NuGet.
-   at Whisper.net.LibraryLoader.NativeLibraryLoader.LoadNativeLibrary(String path, Boolean bypassLoading)
-   at Whisper.net.WhisperFactory.<>c.<.cctor>b__11_0()
-   at System.Lazy`1.ViaFactory(LazyThreadSafetyMode mode)
-   at System.Lazy`1.ExecutionAndPublication(LazyHelper executionAndPublication, Boolean useDefaultConstructor)
-   at System.Lazy`1.CreateValue()
+
+---
+
+## **Configuration**
+
+The bot uses an `appsettings.json` file for configuration. Below is a sample configuration:
+
+```json
+{
+    "model": "ggml-base.bin",
+    "token": "xxxx",
+    "lang": [
+        "RU",
+        "LT",
+        "EN"
+    ],
+    "default_lang": "EN"
+}
 ```
 
-run: 
-```
-wget https://github.com/alex5250/VoiceRecogniseTelegramBot/raw/main/libwhisper.so && sudo mkdir -p  /opt/VoiceRecogniseBot/runtimes/linux-x64 && sudo cp libwhisper.so /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so && ls /opt/VoiceRecogniseBot/runtimes/linux-x64
-```
-output should be: 
-libwhisper.so 
-try again run bot
+- **model**: Path to the Whisper model file.
+- **token**: Authentication token.
+- **lang**: Supported languages (array of language codes).
+- **default_lang**: Default language if none is specified.
 
+---
+
+## **CLI Commands**
+
+Run the bot and manage configurations using the CLI. Below are common commands:
+
+### **1. Run the Bot**
+```bash
+sudo ./VoiceRecogniseBot.AppImage -c bot
+```
+
+### **2. Update Configuration**
+```bash
+sudo ./VoiceRecogniseBot.AppImage -c update_config -m ggml-base.bin -t xxxx -l RU,LT,EN -d EN
+```
+
+### **3. CLI Help**
+```bash
+sudo ./VoiceRecogniseBot.AppImage --help
+```
+
+### **CLI Options:**
+- `-c`, `--command`: Specify the command to run (e.g., `bot`, `update_config`).
+- `-m`, `--model`: Set the model name.
+- `-t`, `--token`: Set the token.
+- `-l`, `--lang`: Set the languages (comma-separated).
+- `-d`, `--default-lang`: Set the default language.
+- `--help`: Display help information.
+- `--version`: Display version information.
+
+---
+
+## **Known Issues**
+Ensure that `libwhisper.so` is available in the expected directory. To resolve missing library issues:
+
+```bash
+wget https://github.com/alex5250/VoiceRecogniseTelegramBot/raw/main/libwhisper.so
+sudo mkdir -p /opt/VoiceRecogniseBot/runtimes/linux-x64
+sudo cp libwhisper.so /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so
+ls /opt/VoiceRecogniseBot/runtimes/linux-x64
+```
+
+The output should include:
+```plaintext
+libwhisper.so
+```
+
+---
+
+## **Planned Features**
+- **API**: Add programmatic interaction support.
+- **WebUI**: Develop a user-friendly web-based management interface.
+- **Expanded Configuration Options**: Advanced CLI and JSON support.
+
+---
+
+**VoiceRecogniseBot** is an evolving project designed to simplify voice recognition with cutting-edge features and cross-platform compatibility. Contributions and feedback are always welcome!
+****

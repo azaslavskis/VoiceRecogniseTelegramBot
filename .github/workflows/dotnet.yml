@@ -1,0 +1,101 @@
+name: Build and Publish
+on: push
+permissions:
+  contents: write
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Step to write SSH key from secret to a file
+    - run: 'echo "$SSH_KEY" > key'
+      shell: bash
+      env:
+        SSH_KEY: ${{ secrets.DEPLOY_KEY }}
+
+      # Checkout repository to work with the code
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+      # Increment the version
+    - name: Increment Version
+      id: version
+      run: |
+        VERSION_FILE="version.txt"
+        
+        # Check if version.txt exists, if not create it
+        if [ ! -f $VERSION_FILE ]; then
+          echo "1.0.0" > $VERSION_FILE
+        fi
+
+        # Read the current version
+        current_version=$(cat $VERSION_FILE)
+
+        # Increment the patch version (e.g., 1.0.0 -> 1.0.1)
+        IFS='.' read -r -a version_parts <<< "$current_version"
+        patch=${version_parts[2]}
+        patch=$((patch + 1))
+
+        # Construct new version and write it to version.txt
+        new_version="${version_parts[0]}.${version_parts[1]}.$patch"
+        echo "New version: $new_version"
+        echo $new_version > $VERSION_FILE
+        echo "::set-output name=version::$new_version"
+
+      # Commit the version change and push
+    - name: Commit Version Update
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add version.txt
+        git commit -m "Update version to ${{ steps.version.outputs.version }}"
+        git push
+
+      # Check for commit message "build_releases"
+    - name: Check Commit Message
+      run: |
+        if ! git log -1 --pretty=%B | grep -iq "build_releases"; then
+          echo "Commit message does not contain 'build_releases'. Skipping build."
+          exit 0
+        fi
+
+      # Setup .NET environment
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0'
+
+      # Install vpk tool
+    - name: Install VPK (Linux only)
+      run: dotnet tool install --global vpk
+
+      # Add dotnet tools to PATH
+    - name: Update PATH for Dotnet Tools
+      run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      # Build for Linux
+    - name: Build for Linux
+      run: |
+        cd src
+        dotnet publish -c Release --self-contained -r linux-x64 -p:PublishSingleFile=true -o ../publish/linux
+        vpk pack -u VoiceRecogniseBot -v ${{ steps.version.outputs.version }} -p ../publish/linux
+
+      # Build for Windows
+    - name: Build for Windows
+      run: |
+        cd src
+        dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true -o ../publish/windows
+
+  
+
+      # Upload all build artifacts
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: VoiceRecogniseBot-${{ steps.version.outputs.version }}
+        path: ./publish
+
+
+
+ 
+
