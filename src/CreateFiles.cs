@@ -11,6 +11,7 @@ namespace VoiceRecogniseBot
     public class AppConfiguration
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+        private static  SettingsPathClass settingsPath = new SettingsPathClass();
 
         public IConfigurationRoot? Configuration { get; private set; }
         
@@ -28,9 +29,11 @@ namespace VoiceRecogniseBot
 
         private void ConfigureLogging()
         {
+            var path_log = Path.GetTempFileName();
+            Console.WriteLine($"Log stored: {path_log}");
             var fileTarget = new FileTarget("logfile")
             {
-                FileName = "/var/log/voicerecognisebot/log.txt",
+                FileName = path_log,
                 Layout = "${longdate} ${level:uppercase=true} ${message} ${exception}"
             };
 
@@ -45,14 +48,9 @@ namespace VoiceRecogniseBot
         {
             try
             {
-                string[] configFiles =
-                {
-                    //"appsettings.json",
-                    "/etc/voicerecognisebot/appsettings.json"
-                };
 
-                foreach (var filePath in configFiles)
-                {
+                var filePath = settingsPath.GetSettingPath();
+
                     if (!File.Exists(filePath))
                     {
                         Logger.Warn($"Configuration file not found: {filePath}. Creating with default settings.");
@@ -66,7 +64,7 @@ namespace VoiceRecogniseBot
 
                         File.WriteAllText(filePath, """ 
                                                          {
-                                                      "model": "ggml-base.bin",
+                                                      "model": "ggml-base",
                                                       "token": "xxxx",
                                                       "lang": [
                                                         "RU",
@@ -75,12 +73,11 @@ namespace VoiceRecogniseBot
                                                       ],
                                                       "default_lang": "EN"
                                                     } 
-                                                          
                                                     """);
 
                         Logger.Info($"Created default configuration file: {filePath}");
                     }
-                }
+                
                 
                 
             }
@@ -98,8 +95,7 @@ namespace VoiceRecogniseBot
             {
                 var builder = new ConfigurationBuilder()
                     .SetBasePath(Directory.GetCurrentDirectory())
-                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-                    .AddJsonFile("/etc/voicerecognisebot/appsettings.json", optional: true, reloadOnChange: true);
+                    .AddJsonFile(settingsPath.GetSettingPath(), optional: true, reloadOnChange: true);
 
                 return builder.Build();
             }

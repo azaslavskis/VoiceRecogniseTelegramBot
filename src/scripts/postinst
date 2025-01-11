@@ -11,7 +11,7 @@ echo -e "Symlink created: /usr/bin/VoiceRecogniseBot -> /opt/VoiceRecogniseBot/V
 
 
 
-directory="/etc/voicerecognisebot"
+directory="/etc/voicerecognisebot/etc/voicerecognisebot"
 file="$directory/appsettings.json"
 
 if [ ! -d "$directory" ]; then

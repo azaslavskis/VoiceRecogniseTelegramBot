@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using NAudio.Wave;
 using Concentus.Oggfile;
 using Concentus.Structs;
@@ -53,11 +54,10 @@ namespace VoiceRecogniseBot
         /// <returns>The path to the resulting WAV file.</returns>
         public string Mp4ToWav(string mp4FilePath)
         {
-            int outRate = 16000; // Desired sample rate
-            var outFile = Path.GetTempFileName();
-            var ffMpeg = new NReco.VideoConverter.FFMpegConverter();
-            ffMpeg.ConvertMedia(mp4FilePath, outFile, Format.ogg);
-            return    OggToWav(outFile);
+           
+            return "error"; 
+
+      
         }
 
         /// <summary>

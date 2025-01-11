@@ -11,7 +11,9 @@ namespace VoiceRecogniseBot
 {
     public class StatsManager
     {
-        private readonly string statsFilePath = "/etc/voicerecognisebot/stats.json";
+        private static SettingsPathClass settingsPath = new SettingsPathClass();
+        private readonly string statsFilePath = settingsPath.GetStatsPath();
+            
         private StatsData stats;
 
         public StatsManager()

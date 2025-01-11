@@ -127,22 +127,30 @@ namespace VoiceRecogniseBot
             var converter = new AudioToWav();
             app_log.logger.Debug($"Convert file to wav 16khz {file}");
             var path = converter.Mp4ToWav(file);
-
-            using var fileStream = File.OpenRead(path);
-
-            var output = processor.ProcessAsync(fileStream);
-            StringBuilder sb = new StringBuilder();
-            app_log.logger.Debug($"Perparing string buffer for file {file}");
-
-            foreach (var result in output.ToBlockingEnumerable())
+            if (path.Contains("error"))
             {
-                string resultValue = $"{result.Start}->{result.End}: {result.Text}";
+                return "Video is not supported yet under Linux";
 
-                sb.AppendLine(resultValue);
-                app_log.logger.Info($"Function is ok! File {file} is parsed");
             }
-            app_log.logger.Info($"Function is ok! File {file} is parsed");
-            return sb.ToString();
+            else
+            {
+                using var fileStream = File.OpenRead(path);
+
+                var output = processor.ProcessAsync(fileStream);
+                StringBuilder sb = new StringBuilder();
+                app_log.logger.Debug($"Perparing string buffer for file {file}");
+
+                foreach (var result in output.ToBlockingEnumerable())
+                {
+                    string resultValue = $"{result.Start}->{result.End}: {result.Text}";
+
+                    sb.AppendLine(resultValue);
+                    app_log.logger.Info($"Function is ok! File {file} is parsed");
+                }
+
+                app_log.logger.Info($"Function is ok! File {file} is parsed");
+                return sb.ToString();
+            }
         }
     }
 }

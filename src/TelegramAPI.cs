@@ -1,4 +1,10 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -199,21 +205,25 @@ namespace VoiceRecogniseBot
                         { "About", async () =>
                             {
                                 AppLog.logger.Debug($"update {msg} chat_id:{chatId} send about message");
-                                await botClient.SendTextMessageAsync(chatId, "bot message", cancellationToken: cancellationToken);
+                                await botClient.SendTextMessageAsync(chatId, "This is simple bot that will recognise and voice messages to text. ", cancellationToken: cancellationToken);
 
                             }
                         },
-                        { "log", async () =>
+                        { "Log", async () =>
                             {
-
-                                await botClient.SendTextMessageAsync(chatId, "bot message", cancellationToken: cancellationToken);
+                                await botClient.SendTextMessageAsync(chatId,AppLog.ReturnLogAsString(), cancellationToken: cancellationToken);
                             }
                         }
+                        
                     };
 
                     if (commandActions.ContainsKey(msg.Text))
                     {
                         await commandActions[msg.Text]();
+                    }
+                    else
+                    {
+                        botClient.SendTextMessageAsync(chatId, "No command sent! For start just type start", cancellationToken: cancellationToken);
                     }
 
                     bool containsElement = _langsInUse.Contains(msg.Text);
