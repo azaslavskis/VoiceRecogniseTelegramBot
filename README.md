@@ -86,6 +86,26 @@ sudo ./VoiceRecogniseBot.AppImage --help
 
 ---
 
+
+# Model list
+| **Model Name**       | **Model Brief Description**         | **String for Config**    |
+|-----------------------|-------------------------------------|-------------------------|
+| GgmlType.Tiny         | Tiny model for compact tasks       | ggml-tiny               |
+| GgmlType.TinyEn       | Tiny English-specific model        | ggml-tiny.en            |
+| GgmlType.Base         | Base model for general tasks       | ggml-base               |
+| GgmlType.BaseEn       | Base English-specific model        | ggml-base.en            |
+| GgmlType.Small        | Small model with better accuracy   | ggml-small              |
+| GgmlType.SmallEn      | Small English-specific model       | ggml-small.en           |
+| GgmlType.Medium       | Medium-sized model for accuracy    | ggml-medium             |
+| GgmlType.MediumEn     | Medium English-specific model      | ggml-medium.en          |
+| GgmlType.LargeV1      | Large model, version 1             | ggml-large-v1           |
+| GgmlType.LargeV2      | Large model, version 2             | ggml-large-v2           |
+| GgmlType.LargeV3      | Large model, version 3             | ggml-large-v3           |
+| GgmlType.LargeV3Turbo | Optimized large model, version 3   | ggml-large-v3-turbo     |
+```
+
+
+
 ## **Known Issues**
 Ensure that `libwhisper.so` is available in the expected directory. To resolve missing library issues:
 
