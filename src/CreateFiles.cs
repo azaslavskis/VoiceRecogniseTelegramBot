@@ -1,109 +1,78 @@
-
-
-using System;
-using System.IO;
-using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
 using NLog;
 using NLog.Targets;
 
-namespace VoiceRecogniseBot
+namespace VoiceRecogniseBot;
+
+public sealed class AppConfiguration
 {
-    public class AppConfiguration
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly SettingsPathClass SettingsPath = new();
+
+    public AppConfiguration()
     {
-        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-        private static  SettingsPathClass settingsPath = new SettingsPathClass();
+        ConfigureLogging();
+        EnsureApplicationFilesExist();
+    }
 
-        public IConfigurationRoot? Configuration { get; private set; }
-        
-        public AppConfiguration()
+    public void EnsureApplicationFilesExist()
+    {
+        try
         {
-            ConfigureLogging();
-            Logger.Debug("Starting configuration setup...");
+            SettingsPath.EnsureConfigDirectoryExists();
+            EnsureConfigExists();
+            EnsureStatsExists();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error while preparing application files.");
+            throw;
+        }
+    }
 
-            EnsureConfigFilesExist();
+    private static void ConfigureLogging()
+    {
+        var logPath = Path.GetTempFileName();
 
-            //Configuration = BuildConfiguration();
+        var fileTarget = new FileTarget("logfile")
+        {
+            FileName = logPath,
+            Layout = "${longdate} ${level:uppercase=true} ${message} ${exception}"
+        };
 
-            Logger.Debug("Configuration setup completed.");
+        var config = new NLog.Config.LoggingConfiguration();
+        config.AddTarget(fileTarget);
+        config.AddRuleForAllLevels(fileTarget);
+
+        LogManager.Configuration = config;
+        Logger.Info("Log stored at {0}", logPath);
+    }
+
+    private static void EnsureConfigExists()
+    {
+        var configPath = SettingsPath.GetSettingPath();
+        if (File.Exists(configPath))
+        {
+            return;
         }
 
-        private void ConfigureLogging()
+        var defaultConfig = new AppConfig();
+        var json = JsonConvert.SerializeObject(defaultConfig, Formatting.Indented);
+        File.WriteAllText(configPath, json);
+        Logger.Info("Created default configuration file at {0}", configPath);
+    }
+
+    private static void EnsureStatsExists()
+    {
+        var statsPath = SettingsPath.GetStatsPath();
+        if (File.Exists(statsPath))
         {
-            var path_log = Path.GetTempFileName();
-            Console.WriteLine($"Log stored: {path_log}");
-            var fileTarget = new FileTarget("logfile")
-            {
-                FileName = path_log,
-                Layout = "${longdate} ${level:uppercase=true} ${message} ${exception}"
-            };
-
-            var config = new NLog.Config.LoggingConfiguration();
-            config.AddTarget(fileTarget);
-            config.AddRuleForAllLevels(fileTarget);
-
-            LogManager.Configuration = config;
+            return;
         }
 
-        private void EnsureConfigFilesExist()
-        {
-            try
-            {
-
-                var filePath = settingsPath.GetSettingPath();
-
-                    if (!File.Exists(filePath))
-                    {
-                        Logger.Warn($"Configuration file not found: {filePath}. Creating with default settings.");
-
-                        var directory = Path.GetDirectoryName(filePath);
-                        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                        {
-                            Directory.CreateDirectory(directory);
-                            Logger.Info($"Created directory: {directory}");
-                        }
-
-                        File.WriteAllText(filePath, """ 
-                                                         {
-                                                      "model": "ggml-base",
-                                                      "token": "xxxx",
-                                                      "lang": [
-                                                        "RU",
-                                                        "LV",
-                                                        "EN"
-                                                      ],
-                                                      "default_lang": "EN"
-                                                    } 
-                                                    """);
-
-                        Logger.Info($"Created default configuration file: {filePath}");
-                    }
-                
-                
-                
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error while ensuring configuration files exist.");
-                throw;
-            }
-        }
-
-
-        public IConfigurationRoot BuildConfiguration()
-        {
-            try
-            {
-                var builder = new ConfigurationBuilder()
-                    .SetBasePath(Directory.GetCurrentDirectory())
-                    .AddJsonFile(settingsPath.GetSettingPath(), optional: true, reloadOnChange: true);
-
-                return builder.Build();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error while building configuration.");
-                throw;
-            }
-        }
+        var stats = new StatsData();
+        var json = JsonConvert.SerializeObject(stats, Formatting.Indented);
+        File.WriteAllText(statsPath, json);
+        Logger.Info("Created stats file at {0}", statsPath);
     }
 }

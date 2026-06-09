@@ -1,75 +1,59 @@
-﻿using System;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
-namespace VoiceRecogniseBot
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
+
+namespace VoiceRecogniseBot;
+
+public sealed class TelegramBotLogger
 {
-    public class TelegramBotLogger
+    private static readonly MemoryTarget MemoryTarget = new("memory")
     {
-        private static string logPath;
+        Layout = "${message}"
+    };
 
-        public NLog.Logger logger;
+    private static bool _isConfigured;
 
-        private static MemoryTarget memoryTarget;
+    public Logger logger { get; }
 
-        public TelegramBotLogger()
-        {
-            // Create a new NLog configuration
-            var config = new LoggingConfiguration();
-
-            logPath = Path.GetTempFileName();
-
-            // Create a memory target
-            memoryTarget = new MemoryTarget("target1")
-            {
-                Layout = "${message}"
-            };
-
-            // Add the memory target to the configuration
-            config.AddTarget(memoryTarget);
-
-            // Create a file target
-            var fileTarget = new FileTarget("logfile")
-            {
-                FileName = logPath
-            };
-            //Console.WriteLine(logPath);
-            // Add the file target to the configuration
-            config.AddTarget(fileTarget);
-            config.AddTarget(memoryTarget);
-
-            // Define a rule to log all messages with a minimum level of Info to the "logfile" target
-            var rule = new LoggingRule("*", LogLevel.Info, fileTarget);
-            var rule_memory = new LoggingRule("*", LogLevel.Info, memoryTarget);
-            config.LoggingRules.Add(rule);
-            config.LoggingRules.Add(rule_memory);
-            // Apply the configuration
-            LogManager.Configuration = config;
-
-            // Create a logger and use it to log messages
-            logger = LogManager.GetCurrentClassLogger();
-
-        }
-
-        public string ReturnLogAsString()
-        {
-            if (memoryTarget != null)
-            {
-                
-                var loggedMessages = memoryTarget.Logs;
-                var logs = string.Join(Environment.NewLine, loggedMessages).Normalize();
-                return logs;
-            }
-            else
-            {
-                return "something went wrong";
-            }
-        }
+    public TelegramBotLogger()
+    {
+        EnsureConfigured();
+        logger = LogManager.GetCurrentClassLogger();
     }
 
+    public string ReturnLogAsString()
+    {
+        return MemoryTarget.Logs.Count == 0
+            ? "No log messages yet."
+            : string.Join(Environment.NewLine, MemoryTarget.Logs).Normalize();
+    }
+
+    private static void EnsureConfigured()
+    {
+        if (_isConfigured)
+        {
+            return;
+        }
+
+        var logPath = Path.GetTempFileName();
+        var config = new LoggingConfiguration();
+
+        var fileTarget = new FileTarget("logfile")
+        {
+            FileName = logPath,
+            Layout = "${longdate} ${level:uppercase=true} ${message} ${exception}"
+        };
+
+        config.AddTarget(fileTarget);
+        //config.AddTarget(memoryTarget);
+
+        config.LoggingRules.Add(
+            new NLog.Config.LoggingRule("*", NLog.LogLevel.Debug, fileTarget)
+        );
 
 
-
+        LogManager.Configuration = config;
+        _isConfigured = true;
+    }
 }
-
-  

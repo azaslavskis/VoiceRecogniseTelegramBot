@@ -1,116 +1,96 @@
-﻿using System;
-using System.IO;
-using System.Runtime.InteropServices;
-using NAudio.Wave;
-using Concentus.Oggfile;
-using Concentus.Structs;
-using NReco.VideoConverter;
+using FFMpegCore;
 
-namespace VoiceRecogniseBot
-{  /// <summary>
-   /// Provides methods for converting audio files to WAV format.
-   /// </summary>
-    internal class AudioToWav
+namespace VoiceRecogniseBot;
+
+/// <summary>
+/// Converts media files to 16 kHz mono WAV using FFMpegCore.
+/// </summary>
+internal sealed class AudioToWav
+{
+    private static readonly TelegramBotLogger AppLog = new();
+    private static bool _ffmpegConfigured;
+
+    public string ConvertToWav(string inputFilePath)
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="AudioToWav"/> class.
-        /// </summary>
-        public AudioToWav() { }
+        EnsureFfmpegConfigured();
 
-        /// <summary>
-        /// Converts an MP3 audio file to WAV format.
-        /// </summary>
-        /// <param name="mp3FilePath">The path to the input MP3 file.</param>
-        /// <returns>The path to the resulting WAV file.</returns>
-        public string Mp3AudioToWav(string mp3FilePath)
+        var outputFilePath = Path.ChangeExtension(Path.GetTempFileName(), ".wav");
+
+        try
         {
-            int outRate = 16000; // Desired sample rate
-            var outFile = Path.GetTempFileName();
+            FFMpegArguments
+                .FromFileInput(inputFilePath)
+                .OutputToFile(outputFilePath, overwrite: true, options => options
+                    .WithCustomArgument("-vn")
+                    .WithCustomArgument("-ac 1")
+                    .WithCustomArgument("-ar 16000")
+                    .ForceFormat("wav"))
+                .ProcessSynchronously();
+        }
+        catch (FFMpegCore.Exceptions.FFMpegException ex)
+        {
+            TryDeleteTempFile(outputFilePath);
+            throw new MediaConversionException(
+                "ffmpeg failed to convert the media file. Check that the file format is supported and ffmpeg is installed correctly.",
+                ex);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            TryDeleteTempFile(outputFilePath);
+            throw new MediaConversionException(
+                "ffmpeg binary was not found. Install ffmpeg or set FFMPEG_PATH to the folder containing the ffmpeg executable.",
+                ex);
+        }
+        catch
+        {
+            TryDeleteTempFile(outputFilePath);
+            throw;
+        }
 
-            // Create a Mp3FileReader for the input MP3 file
-            using (var reader = new Mp3FileReader(mp3FilePath))
+        if (!File.Exists(outputFilePath))
+        {
+            throw new InvalidOperationException("ffmpeg conversion did not produce an output file.");
+        }
+
+        AppLog.logger.Debug("Converted {0} to wav via FFMpegCore at {1}", inputFilePath, outputFilePath);
+        return outputFilePath;
+    }
+
+    private static void EnsureFfmpegConfigured()
+    {
+        if (_ffmpegConfigured)
+        {
+            return;
+        }
+
+        var configuredPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            var binaryFolder = Directory.Exists(configuredPath)
+                ? configuredPath
+                : Path.GetDirectoryName(configuredPath);
+
+            if (!string.IsNullOrWhiteSpace(binaryFolder))
             {
-                // Create a new WaveFormat with the desired sample rate and the same number of channels as the input
-                var outFormat = new WaveFormat(outRate, reader.WaveFormat.Channels);
-
-                // Create a MediaFoundationResampler to resample the audio to the desired format
-                using (var resampler = new MediaFoundationResampler(reader, outFormat))
-                {
-                    // Optionally, you can set the resampler quality (60 is a good default)
-                    // resampler.ResamplerQuality = 60;
-
-                    // Create a WaveFileWriter to write the resampled audio to a WAV file
-                    WaveFileWriter.CreateWaveFile(outFile, resampler);
-                }
+                GlobalFFOptions.Configure(options => options.BinaryFolder = binaryFolder);
             }
-
-            return outFile;
         }
 
-        /// <summary>
-        /// Converts an MP4 audio file to WAV format.
-        /// </summary>
-        /// <param name="mp4FilePath">The path to the input MP4 file.</param>
-        /// <returns>The path to the resulting WAV file.</returns>
-        public string Mp4ToWav(string mp4FilePath)
+        _ffmpegConfigured = true;
+    }
+
+    private static void TryDeleteTempFile(string path)
+    {
+        try
         {
-           
-            return "error"; 
-
-      
-        }
-
-        /// <summary>
-        /// Converts an Ogg audio file to WAV format.
-        /// </summary>
-        /// <param name="oggFilePath">The path to the input Ogg file.</param>
-        /// <returns>The path to the resulting WAV file.</returns>
-        public string OggToWav(string oggFilePath)
-        {
-            // Generate a temporary WAV file name
-            var fileWav = Path.GetTempFileName();
-
-            // Open the input Ogg file for reading
-            using (FileStream fileIn = new FileStream(oggFilePath, FileMode.Open))
-            using (MemoryStream pcmStream = new MemoryStream())
+            if (File.Exists(path))
             {
-                // Create an Opus decoder with a sample rate of 16 kHz and 1 channel
-                OpusDecoder decoder = OpusDecoder.Create(16000, 1);
-
-                // Create an Opus Ogg stream reader for the input file
-                OpusOggReadStream oggIn = new OpusOggReadStream(decoder, fileIn);
-
-                // Decode and convert Ogg packets to PCM
-                while (oggIn.HasNextPacket)
-                {
-                    short[] packet = oggIn.DecodeNextPacket();
-                    if (packet != null)
-                    {
-                        // Convert and write PCM samples to the PCM stream
-                        for (int i = 0; i < packet.Length; i++)
-                        {
-                            var bytes = BitConverter.GetBytes(packet[i]);
-                            pcmStream.Write(bytes, 0, bytes.Length);
-                        }
-                    }
-                }
-
-                // Set the position of the PCM stream to the beginning
-                pcmStream.Position = 0;
-
-                // Create a raw source wave stream with the PCM data and a sample rate of 16 kHz
-                var wavStream = new RawSourceWaveStream(pcmStream, new WaveFormat(16000, 1));
-
-                // Create a sample provider from the WAV stream
-                var sampleProvider = wavStream.ToSampleProvider();
-
-                // Write the resampled audio to a 16-bit WAV file
-                WaveFileWriter.CreateWaveFile16(fileWav, sampleProvider);
+                File.Delete(path);
             }
-
-            // Return the path to the resulting WAV file
-            return fileWav;
         }
-
+        catch
+        {
+            // Ignore temp cleanup failures.
+        }
     }
 }

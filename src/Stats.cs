@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Xml;
 using Newtonsoft.Json;
 using Formatting = Newtonsoft.Json.Formatting;
 
@@ -11,10 +10,10 @@ namespace VoiceRecogniseBot
 {
     public class StatsManager
     {
-        private static SettingsPathClass settingsPath = new SettingsPathClass();
-        private readonly string statsFilePath = settingsPath.GetStatsPath();
+        private static readonly SettingsPathClass SettingsPath = new();
+        private readonly string statsFilePath = SettingsPath.GetStatsPath();
             
-        private StatsData stats;
+        private StatsData stats = new();
 
         public StatsManager()
         {
@@ -23,6 +22,8 @@ namespace VoiceRecogniseBot
 
         private void LoadStats()
         {
+            SettingsPath.EnsureConfigDirectoryExists();
+
             if (File.Exists(statsFilePath))
             {
                 string jsonData = File.ReadAllText(statsFilePath);
@@ -47,6 +48,7 @@ namespace VoiceRecogniseBot
 
         private void SaveStats()
         {
+            SettingsPath.EnsureConfigDirectoryExists();
             string jsonData = JsonConvert.SerializeObject(stats, Formatting.Indented);
             File.WriteAllText(statsFilePath, jsonData);
         }

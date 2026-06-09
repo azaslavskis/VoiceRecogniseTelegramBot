@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Recognise Bot Admin</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Voice Recognise Bot</p>
+          <h1>Admin</h1>
+        </div>
+        <div class="actions">
+          <button id="reloadButton" class="icon-button" type="button" aria-label="Reload dashboard" title="Reload dashboard">↻</button>
+          <button id="saveButton" class="primary" type="button">Save</button>
+        </div>
+      </section>
+
+      <section id="statusRow" class="status-row">
+        <span id="statusText">Loading dashboard</span>
+        <strong id="dirtyBadge" hidden>Unsaved</strong>
+      </section>
+
+      <section id="summary" class="summary" aria-label="Bot summary"></section>
+
+      <nav class="tabs" aria-label="Admin view">
+        <button id="dashboardTab" class="active" type="button">Dashboard</button>
+        <button id="jsonTab" type="button">JSON</button>
+      </nav>
+
+      <section id="content" class="empty">Loading dashboard...</section>
+    </main>
+
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

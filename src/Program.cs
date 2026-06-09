@@ -1,158 +1,208 @@
-﻿using System;
 using CommandLine;
-using Microsoft.Extensions.Configuration.Json;
-using Microsoft.Extensions.Configuration;
-using NLog;
-using Velopack;
+using Newtonsoft.Json;
 
-namespace VoiceRecogniseBot
+namespace VoiceRecogniseBot;
+
+public static class Program
 {
-    public class Program
+    private static readonly Config Config = new();
+    private static readonly TelegramBotLogger AppLog = new();
+    private static readonly SettingsPathClass SettingsPath = new();
+
+    [Verb("run", HelpText = "Start the Telegram bot and the local stats API. Use 'run bot' or 'run web-ui' to start only one service.")]
+    private sealed class RunOptions
     {
-        private static Config config = new Config();
-        private static TelegramBotLogger app_log = new TelegramBotLogger();
-        private static WebUIAPI api = new WebUIAPI();
-        public class Options
+        [Value(0, MetaName = "service", Required = false, HelpText = "Service to run: bot or web-ui. Omit to start the bot and use the configured web server setting.")]
+        public string? Service { get; set; }
+
+        [Option("web-server", HelpText = "Enable or disable the local stats web server for this run.")]
+        public bool? WebServer { get; set; }
+    }
+
+    [Verb("config-show", HelpText = "Print the current JSON configuration.")]
+    private sealed class ShowConfigOptions
+    {
+    }
+
+    [Verb("config-path", HelpText = "Print the configuration file path.")]
+    private sealed class ConfigPathOptions
+    {
+    }
+
+    [Verb("stats-path", HelpText = "Print the stats file path.")]
+    private sealed class StatsPathOptions
+    {
+    }
+
+    [Verb("stats-show", HelpText = "Print saved message statistics.")]
+    private sealed class ShowStatsOptions
+    {
+    }
+
+    [Verb("config-set", HelpText = "Update one or more configuration values.")]
+    private sealed class UpdateConfigOptions
+    {
+        [Option("model", HelpText = "Whisper model name or local model file path.")]
+        public string? Model { get; set; }
+
+        [Option("token", HelpText = "Telegram bot token.")]
+        public string? Token { get; set; }
+
+        [Option("lang", Separator = ',', HelpText = "Comma-separated language codes, for example EN,RU,LV.")]
+        public IEnumerable<string>? Lang { get; set; }
+
+        [Option("default-lang", HelpText = "Default recognition language.")]
+        public string? DefaultLang { get; set; }
+
+        [Option("web-server", HelpText = "Enable or disable the local stats web server.")]
+        public bool? WebServer { get; set; }
+    }
+
+    public static int Main(string[] args)
+    {
+        _ = new AppConfiguration();
+
+        return Parser.Default.ParseArguments<
+                RunOptions,
+                ShowConfigOptions,
+                ConfigPathOptions,
+                StatsPathOptions,
+                ShowStatsOptions,
+                UpdateConfigOptions>(args)
+            .MapResult(
+                (RunOptions options) => RunBotHost(options),
+                (ShowConfigOptions _) => ShowConfig(),
+                (ConfigPathOptions _) => PrintPath(SettingsPath.GetSettingPath()),
+                (StatsPathOptions _) => PrintPath(SettingsPath.GetStatsPath()),
+                (ShowStatsOptions _) => ShowStats(),
+                (UpdateConfigOptions options) => UpdateConfiguration(options),
+                errors => errors.Any(error => error.Tag is ErrorType.HelpRequestedError or ErrorType.HelpVerbRequestedError or ErrorType.VersionRequestedError) ? 0 : 1);
+    }
+
+    private static int RunBotHost(RunOptions options)
+    {
+        return options.Service?.Trim().ToLowerInvariant() switch
         {
-            [Option('c', "command", Required = false, HelpText = "Specify the command to run.")]
-            public required string Command { get; set; }
+            null or "" => RunBotWithConfiguredWebServer(options),
+            "bot" => RunBotOnly(),
+            "web-ui" or "webui" or "web" => RunWebUiOnly(),
+            _ => PrintUnknownService(options.Service)
+        };
+    }
 
-            // Add other options for configuration edit commands here if needed
-            [Option('m', "model", Required = false, HelpText = "Set the model name.")]
-            public required string Model { get; set; }
+    private static int RunBotWithConfiguredWebServer(RunOptions options)
+    {
+        AppLog.logger.Info("Starting bot host");
+        var appConfig = Config.LoadAppConfig();
+        var shouldStartWebServer = options.WebServer ?? appConfig.WebServer;
 
-            [Option('t', "token", Required = false, HelpText = "Set the token.")]
-            public required string Token { get; set; }
+        //StartWebUiInBackground(shouldStartWebServer);
 
-            [Option('l', "lang", Required = false, HelpText = "Set the languages.")]
-            public required string Lang { get; set; }
+        _ = new TelegramApi();
+        return 0;
+    }
 
-            [Option('d', "default-lang", Required = false, HelpText = "Set the default language.")]
-            public required string DefaultLang { get; set; }
+    private static int RunBotOnly()
+    {
+        AppLog.logger.Info("Starting Telegram bot only");
+        _ = new TelegramApi();
+        return 0;
+    }
+
+    private static int RunWebUiOnly()
+    {
+        new WebUi().ServerStart();
+        return 0;
+    }
+
+
+
+    private static int PrintUnknownService(string? service)
+    {
+        Console.Error.WriteLine($"Unknown run service '{service}'. Use 'run bot' or 'run web-ui'.");
+        return 1;
+    }
+
+    private static int ShowConfig()
+    {
+        var config = Config.LoadAppConfig();
+        Console.WriteLine(JsonConvert.SerializeObject(config, Formatting.Indented));
+        return 0;
+    }
+
+    private static int ShowStats()
+    {
+        var stats = new StatsManager();
+        Console.WriteLine(stats.GenerateJsonStats());
+        return 0;
+    }
+
+    private static int UpdateConfiguration(UpdateConfigOptions options)
+    {
+        if (options.Model is null &&
+            options.Token is null &&
+            options.Lang is null &&
+            options.DefaultLang is null &&
+            options.WebServer is null)
+        {
+            Console.Error.WriteLine("No changes requested. Use at least one option such as --token or --lang.");
+            return 1;
         }
 
-        private static async void  RunBotAsync()
+        var updatedConfig = Config.LoadAppConfig();
+
+        if (!string.IsNullOrWhiteSpace(options.Model))
         {
-             RunBot();
+            updatedConfig.Model = options.Model.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Token))
+        {
+            updatedConfig.Token = options.Token.Trim();
+        }
+
+        if (options.Lang is not null)
+        {
+            var languages = options.Lang
+                .Select(lang => lang.Trim())
+                .Where(lang => !string.IsNullOrWhiteSpace(lang))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (languages.Count > 0)
+            {
+                updatedConfig.Lang = languages;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.DefaultLang))
+        {
+            updatedConfig.DefaultLang = options.DefaultLang.Trim();
         }
         
-        private static async void  WebApiServer()
-        {
-             api.Run();
-        }
-        public static void Main(string[] args)
-        {
 
-            
-            VelopackApp.Build().Run();
-            app_log.logger.Debug("First message from logger");
-            AppConfiguration appconfig = new AppConfiguration();
-            appconfig.BuildConfiguration();
-            Parser.Default.ParseArguments<Options>(args)
-                .WithParsed(o =>
-                {
-                    if (!string.IsNullOrWhiteSpace(o.Command))
-                    {
-                        // Check for specific commands and handle them accordingly
-                        switch (o.Command.ToLower())
-                        {
-                            case "bot":
-                                
-                                Thread apiWebServer= new Thread(new ThreadStart(WebApiServer));
-                                Thread TelegramBot = new Thread(new ThreadStart(RunBotAsync));
-                                apiWebServer.Start();
-                                TelegramBot.Start();
-                             
-                             
-                                break;
-                            case "update_config":
-                                UpdateConfiguration(o);
-                                break;
-                            default:
-                                Console.WriteLine("Invalid command. Supported commands: bot, update_config");
-                                app_log.logger.Error($"Invalid command passed {o.Command.ToLower()}");
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine("Command is requred");
-                        Console.WriteLine("Supported commands: bot, update_config");
-                        app_log.logger.Error($"No command passed {o.Command}");
-                    }
-                });
+        if (options.WebServer is not null)
+        {
+            updatedConfig.WebServer = options.WebServer.Value;
         }
 
-        private static void RunBot()
+        if (updatedConfig.Lang.Count > 0 &&
+            !updatedConfig.Lang.Contains(updatedConfig.DefaultLang, StringComparer.OrdinalIgnoreCase))
         {
-            var telegram = new TelegramApi();
+            Console.Error.WriteLine("Default language must also exist in the language list.");
+            return 1;
         }
 
-        private static void UpdateConfiguration(Options options)
-        {
-            // Implement logic to update the configuration based on the provided options
-            Console.WriteLine("Updating configuration...");
-            var config_in_use = config.GetConfig();
-            app_log.logger.Info($"Config update {options}");
+        Config.SaveAppConfig(updatedConfig);
 
+        Console.WriteLine("Configuration updated:");
+        Console.WriteLine(JsonConvert.SerializeObject(updatedConfig, Formatting.Indented));
+        return 0;
+    }
 
-            if (!string.IsNullOrEmpty(options.Model))
-            {
-                // Update the model configuration
-                app_log.logger.Info($"Updating model: {options.Model}");
-                // Add code to update the model configuration here
-                if (config_in_use["model"] != null)
-                {
-                    config_in_use["model"] = options.Model;
-
-
-                }
-                config.UpdateConfig(config_in_use);
-            }
-
-            if (!string.IsNullOrEmpty(options.Token))
-            {
-                // Update the token configuration
-                app_log.logger.Debug($"Updating model: {options.Token}");
-
-                if (config_in_use["token"] != null)
-                {
-                    config_in_use["token"] = options.Token;
-
-                }
-                config.UpdateConfig(config_in_use);
-
-            }
-
-            if (!string.IsNullOrEmpty(options.Lang))
-            {
-                // Update the languages configuration
-                app_log.logger.Info($"Updating model: {options.Lang}");
-         
-                if (config_in_use["lang"] != null)
-                {
-                    config_in_use["lang"] = options.Lang;
-
-                }
-                config.UpdateConfig(config_in_use);
-            }
-
-            if (!string.IsNullOrEmpty(options.DefaultLang))
-            {
-                // Update the default language configuration
-                app_log.logger.Info($"Updating model: {options.DefaultLang}");
-
-                if (config_in_use["default_lang"] != null)
-                {
-                    Console.WriteLine($"Updating default language: {config_in_use["default_lang"]}");
-                    config_in_use["default_lang"] = options.DefaultLang;
-                    
-
-             
-                }
-                config.UpdateConfig(config_in_use);
-            }
-
-        }
+    private static int PrintPath(string path)
+    {
+        Console.WriteLine(path);
+        return 0;
     }
 }

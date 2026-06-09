@@ -1,134 +1,184 @@
+# VoiceRecogniseTelegramBot
 
-# **VoiceRecogniseBot Documentation**
+`VoiceRecogniseTelegramBot` is a .NET 8 Telegram bot that downloads voice or audio messages, converts them to WAV, and runs Whisper transcription locally.
 
-## **Overview**
+The project is small, but it now has a clearer command-line interface and a simpler configuration story:
 
-**VoiceRecogniseBot** is a modern, cross-platform voice recognition tool built using C# and Whisper. It features an intuitive CLI, easy configuration via JSON, and robust AppImage support for hassle-free deployment.
+- `run` starts the Telegram bot and the local stats endpoint
+- `config-show` prints the active config
+- `config-set` updates config values without hand-editing JSON
+- `config-path` and `stats-path` show where runtime files live
+- `stats-show` prints the saved message counters
 
----
+## Project Layout
 
-## **Features**
-- **AppImage Distribution**: Single binary for simplified installation.
-- **Easy Configuration**: Plug-and-play setup with `appsettings.json`.
-- **Powerful CLI API**: Manage the bot, update settings, and run commands from the terminal.
-- **Cross-Platform**: Runs seamlessly on Windows, Linux, and macOS.
-- **Whisper Integration**: State-of-the-art speech recognition for high accuracy.
-- **Future Enhancements**:
-  - API for programmatic interactions.
-  - WebUI for user-friendly management.
-
----
-
-## **Installation**
-
-### **1. AppImage Installation**
-Download and execute the AppImage:
-
-```bash
-wget https://example.com/VoiceRecogniseBot.AppImage
-chmod +x VoiceRecogniseBot.AppImage
-sudo ./VoiceRecogniseBot.AppImage
+```text
+src/
+  Program.cs            CLI entrypoint
+  TelegramAPI.cs        Telegram update handling
+  WhisperAPI.cs         Whisper model loading and transcription
+  AudioToWav.cs         Audio conversion helpers
+  Config.cs             Config read/write helper
+  CreateFiles.cs        First-run file bootstrap
+  SettingsPathClass.cs  Runtime path resolution
+  Stats.cs              Message counters
+  WebUIAPI.cs           Local HTTP stats endpoint
 ```
 
----
+## Requirements
 
-## **Configuration**
+- .NET 8 SDK
+- A Telegram bot token from BotFather
+- `ffmpeg` available in `PATH`, or set via `FFMPEG_PATH`
+- Whisper runtime dependencies required by `Whisper.net`
 
-The bot uses an `appsettings.json` file for configuration. Below is a sample configuration:
+## Build
+
+```bash
+dotnet build src/VoiceRecogniseBot.sln
+```
+
+## Configuration
+
+On first start the app creates `appsettings.json` and `stats.json` in its runtime config directory.
+
+Default locations:
+
+- Linux: `${XDG_CONFIG_HOME:-~/.config}/VoiceRecogniseBot`
+- macOS: `~/Library/Application Support/VoiceRecogniseBot`
+- Windows: `%LocalAppData%\VoiceRecogniseBot`
+
+You can override this location with:
+
+```bash
+export VOICE_RECOGNISEBOT_HOME=/path/to/runtime-data
+```
+
+Example config:
 
 ```json
 {
-    "model": "ggml-base.bin",
-    "token": "xxxx",
-    "lang": [
-        "RU",
-        "LT",
-        "EN"
-    ],
-    "default_lang": "EN"
+  "Model": "ggml-base",
+  "Token": "123456:telegram-token",
+  "Lang": [
+    "RU",
+    "LV",
+    "EN"
+  ],
+  "DefaultLang": "EN",
+  "BotText": {
+    "SetLanguageButton": "Set Lang",
+    "LogButton": "Log",
+    "AboutButton": "About",
+    "MainMenuPrompt": "Choose an action:",
+    "LanguagePrompt": "Choose the recognition language:",
+    "AboutMessage": "This bot transcribes Telegram voice and audio messages into text.",
+    "UnknownCommandMessage": "Unknown command. Send 'start' to open the bot menu.",
+    "TranscriptionInProgressMessage": "Transcription in progress...",
+    "TranscriptionResultPrefix": "Recognised message:",
+    "LanguageChangedPrefix": "Changed message recognition language to",
+    "InternalErrorMessage": "Transcription failed due to an internal error. Check the bot logs for details."
+  }
 }
 ```
 
-- **model**: Path to the Whisper model file.
-- **token**: Authentication token.
-- **lang**: Supported languages (array of language codes).
-- **default_lang**: Default language if none is specified.
+Notes:
 
----
+- `Model` can be a Whisper model name such as `ggml-base` or a path to an existing local model file
+- Built-in model aliases are downloaded into the runtime data directory under `models/`
+- `Lang` is the list shown to Telegram users in the language keyboard
+- `DefaultLang` should also appear in `Lang`
+- `FFMPEG_PATH` can point to the folder containing `ffmpeg` if it is not on `PATH`
+- `BotText` lets you customize bot buttons and user-facing Telegram messages without changing code
 
-## **CLI Commands**
+## Cross-Platform Publish
 
-Run the bot and manage configurations using the CLI. Below are common commands:
+The project is no longer pinned to one operating system. It can be built on any supported .NET 8 host and published for Windows, Linux, or macOS by choosing the runtime identifier at publish time.
 
-### **1. Run the Bot**
-```bash
-sudo ./VoiceRecogniseBot.AppImage -c bot
-```
-
-### **2. Update Configuration**
-```bash
-sudo ./VoiceRecogniseBot.AppImage -c update_config -m ggml-base.bin -t xxxx -l RU,LT,EN -d EN
-```
-
-### **3. CLI Help**
-```bash
-sudo ./VoiceRecogniseBot.AppImage --help
-```
-
-### **CLI Options:**
-- `-c`, `--command`: Specify the command to run (e.g., `bot`, `update_config`).
-- `-m`, `--model`: Set the model name.
-- `-t`, `--token`: Set the token.
-- `-l`, `--lang`: Set the languages (comma-separated).
-- `-d`, `--default-lang`: Set the default language.
-- `--help`: Display help information.
-- `--version`: Display version information.
-
----
-
-
-# Model list
-| **Model Name**       | **Model Brief Description**         | **String for Config**    |
-|-----------------------|-------------------------------------|-------------------------|
-| GgmlType.Tiny         | Tiny model for compact tasks       | ggml-tiny               |
-| GgmlType.TinyEn       | Tiny English-specific model        | ggml-tiny.en            |
-| GgmlType.Base         | Base model for general tasks       | ggml-base               |
-| GgmlType.BaseEn       | Base English-specific model        | ggml-base.en            |
-| GgmlType.Small        | Small model with better accuracy   | ggml-small              |
-| GgmlType.SmallEn      | Small English-specific model       | ggml-small.en           |
-| GgmlType.Medium       | Medium-sized model for accuracy    | ggml-medium             |
-| GgmlType.MediumEn     | Medium English-specific model      | ggml-medium.en          |
-| GgmlType.LargeV1      | Large model, version 1             | ggml-large-v1           |
-| GgmlType.LargeV2      | Large model, version 2             | ggml-large-v2           |
-| GgmlType.LargeV3      | Large model, version 3             | ggml-large-v3           |
-| GgmlType.LargeV3Turbo | Optimized large model, version 3   | ggml-large-v3-turbo     |
-```
-
-
-
-## **Known Issues**
-Ensure that `libwhisper.so` is available in the expected directory. To resolve missing library issues:
+Example Windows publish:
 
 ```bash
-wget https://github.com/alex5250/VoiceRecogniseTelegramBot/raw/main/libwhisper.so
-sudo mkdir -p /opt/VoiceRecogniseBot/runtimes/linux-x64
-sudo cp libwhisper.so /opt/VoiceRecogniseBot/runtimes/linux-x64/libwhisper.so
-ls /opt/VoiceRecogniseBot/runtimes/linux-x64
+dotnet publish src/VoiceRecogniseBot.csproj -c Release -r win-x64 --self-contained false
 ```
 
-The output should include:
-```plaintext
-libwhisper.so
+Example Linux publish:
+
+```bash
+dotnet publish src/VoiceRecogniseBot.csproj -c Release -r linux-x64 --self-contained false
 ```
 
----
+Example macOS publish:
 
-## **Planned Features**
-- **API**: Add programmatic interaction support.
-- **WebUI**: Develop a user-friendly web-based management interface.
-- **Expanded Configuration Options**: Advanced CLI and JSON support.
+```bash
+dotnet publish src/VoiceRecogniseBot.csproj -c Release -r osx-arm64 --self-contained false
+```
 
----
+## CLI Usage
 
-**VoiceRecogniseBot** is an evolving project designed to simplify voice recognition with cutting-edge features and cross-platform compatibility. Contributions and feedback are always welcome!
-****
+Show help:
+
+```bash
+dotnet run --project src/VoiceRecogniseBot.csproj -- --help
+```
+
+Print the config path:
+
+```bash
+dotnet run --project src/VoiceRecogniseBot.csproj -- config-path
+```
+
+Show the current config:
+
+```bash
+dotnet run --project src/VoiceRecogniseBot.csproj -- config-show
+```
+
+Update config values:
+
+```bash
+dotnet run --project src/VoiceRecogniseBot.csproj -- config-set \
+  --token "123456:telegram-token" \
+  --model ggml-base \
+  --lang EN,RU,LV \
+  --default-lang EN
+```
+
+Show stats:
+
+```bash
+dotnet run --project src/VoiceRecogniseBot.csproj -- stats-show
+```
+
+Run the bot:
+
+```bash
+dotnet run --project src/VoiceRecogniseBot.csproj -- run
+```
+
+## Runtime Behavior
+
+- The Telegram bot listens for voice, audio, video note, and video updates
+- Voice, audio, and video files are converted to 16 kHz mono WAV with `ffmpeg` through `FFMpegCore` before Whisper transcription
+- A simple local HTTP server listens on `http://localhost:8000/` and returns basic JSON stats
+- Message counters are written to `stats.json`
+
+## Telegram Controls
+
+- Send `start` or `/start` to open the bot keyboard
+- `Set Lang` shows the configured language list
+- `Log` returns the in-memory application log
+- `About` prints a short bot description
+
+## Current Limitations
+
+- The project now depends on an external `ffmpeg` binary being installed, while media conversion is managed through the `FFMpegCore` wrapper
+- If `ffmpeg` is missing or conversion fails, the bot now returns a direct Telegram error message instead of failing silently
+- The bot responses and keyboard labels are still hard-coded
+- The local HTTP server is a minimal stats endpoint, not a full Web UI
+- I did not verify a full build in this workspace because `dotnet` is not installed in the current shell
+
+## Suggested Next Cleanup
+
+- Split Telegram command handling into smaller methods
+- Replace hard-coded response text with config-driven strings
+- Add automated tests around config parsing and stats persistence
