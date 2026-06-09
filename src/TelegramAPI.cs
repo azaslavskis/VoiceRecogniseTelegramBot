@@ -56,20 +56,19 @@ internal sealed class TelegramApi
             string.Join(", ", _languagesInUse));
 
         _botClient = new TelegramBotClient(_token);
-        Run();
     }
 
-    private void Run()
+    public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         if (_botClient is null)
         {
             return;
         }
 
-        var me = _botClient.GetMe().GetAwaiter().GetResult();
+        var me = await _botClient.GetMe(cancellationToken);
         AppLog.logger.Info("Bot authenticated as {0} ({1})", me.Username, me.Id);
 
-        using CancellationTokenSource cancellationTokenSource = new();
+        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var receiverOptions = new ReceiverOptions
         {
             AllowedUpdates = []
@@ -81,10 +80,20 @@ internal sealed class TelegramApi
             receiverOptions: receiverOptions,
             cancellationToken: cancellationTokenSource.Token);
 
-        Console.WriteLine($"Listening for @{me.Username}. Press Enter to stop.");
-        //Console.ReadLine();
-        await Task.Delay(Timeout.Infinite);
-        cancellationTokenSource.Cancel();
+        Console.WriteLine($"Listening for @{me.Username}. Press Ctrl+C to stop.");
+
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationTokenSource.Token);
+        }
+        catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
+        {
+            AppLog.logger.Info("Telegram bot shutdown requested.");
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+        }
     }
 
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)

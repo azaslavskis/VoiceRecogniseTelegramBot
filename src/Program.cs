@@ -58,11 +58,11 @@ public static class Program
         public bool? WebServer { get; set; }
     }
 
-    public static int Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
         _ = new AppConfiguration();
 
-        return Parser.Default.ParseArguments<
+        return await Parser.Default.ParseArguments<
                 RunOptions,
                 ShowConfigOptions,
                 ConfigPathOptions,
@@ -71,48 +71,83 @@ public static class Program
                 UpdateConfigOptions>(args)
             .MapResult(
                 (RunOptions options) => RunBotHost(options),
-                (ShowConfigOptions _) => ShowConfig(),
-                (ConfigPathOptions _) => PrintPath(SettingsPath.GetSettingPath()),
-                (StatsPathOptions _) => PrintPath(SettingsPath.GetStatsPath()),
-                (ShowStatsOptions _) => ShowStats(),
-                (UpdateConfigOptions options) => UpdateConfiguration(options),
-                errors => errors.Any(error => error.Tag is ErrorType.HelpRequestedError or ErrorType.HelpVerbRequestedError or ErrorType.VersionRequestedError) ? 0 : 1);
+                (ShowConfigOptions _) => Task.FromResult(ShowConfig()),
+                (ConfigPathOptions _) => Task.FromResult(PrintPath(SettingsPath.GetSettingPath())),
+                (StatsPathOptions _) => Task.FromResult(PrintPath(SettingsPath.GetStatsPath())),
+                (ShowStatsOptions _) => Task.FromResult(ShowStats()),
+                (UpdateConfigOptions options) => Task.FromResult(UpdateConfiguration(options)),
+                errors => Task.FromResult(errors.Any(error => error.Tag is ErrorType.HelpRequestedError or ErrorType.HelpVerbRequestedError or ErrorType.VersionRequestedError) ? 0 : 1));
     }
 
-    private static int RunBotHost(RunOptions options)
+    private static Task<int> RunBotHost(RunOptions options)
     {
         return options.Service?.Trim().ToLowerInvariant() switch
         {
             null or "" => RunBotWithConfiguredWebServer(options),
             "bot" => RunBotOnly(),
             "web-ui" or "webui" or "web" => RunWebUiOnly(),
-            _ => PrintUnknownService(options.Service)
+            _ => Task.FromResult(PrintUnknownService(options.Service))
         };
     }
 
-    private static int RunBotWithConfiguredWebServer(RunOptions options)
+    private static async Task<int> RunBotWithConfiguredWebServer(RunOptions options)
     {
         AppLog.logger.Info("Starting bot host");
         var appConfig = Config.LoadAppConfig();
         var shouldStartWebServer = options.WebServer ?? appConfig.WebServer;
+        using var cancellationTokenSource = CreateShutdownTokenSource();
 
-        //StartWebUiInBackground(shouldStartWebServer);
+        var webUiTask = shouldStartWebServer
+            ? new WebUi().ServerStartAsync(cancellationTokenSource.Token)
+            : Task.CompletedTask;
+        var telegramTask = new TelegramApi().RunAsync(cancellationTokenSource.Token);
 
-        _ = new TelegramApi();
+        var completedTask = shouldStartWebServer
+            ? await Task.WhenAny(telegramTask, webUiTask)
+            : telegramTask;
+
+        await completedTask;
+        await cancellationTokenSource.CancelAsync();
+        await AwaitShutdownAsync(completedTask == telegramTask ? webUiTask : telegramTask);
         return 0;
     }
 
-    private static int RunBotOnly()
+    private static async Task<int> RunBotOnly()
     {
         AppLog.logger.Info("Starting Telegram bot only");
-        _ = new TelegramApi();
+        using var cancellationTokenSource = CreateShutdownTokenSource();
+        await new TelegramApi().RunAsync(cancellationTokenSource.Token);
         return 0;
     }
 
-    private static int RunWebUiOnly()
+    private static async Task<int> RunWebUiOnly()
     {
-        new WebUi().ServerStart();
+        using var cancellationTokenSource = CreateShutdownTokenSource();
+        await new WebUi().ServerStartAsync(cancellationTokenSource.Token);
         return 0;
+    }
+
+    private static CancellationTokenSource CreateShutdownTokenSource()
+    {
+        var cancellationTokenSource = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            cancellationTokenSource.Cancel();
+        };
+
+        return cancellationTokenSource;
+    }
+
+    private static async Task AwaitShutdownAsync(Task task)
+    {
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
 

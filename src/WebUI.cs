@@ -9,6 +9,11 @@ public class WebUi
 
     public void ServerStart()
     {
+        ServerStartAsync().GetAwaiter().GetResult();
+    }
+
+    public async Task ServerStartAsync(CancellationToken cancellationToken = default)
+    {
         var builder = WebApplication.CreateBuilder();
 
         var urls = Environment.GetEnvironmentVariable("VOICE_RECOGNISEBOT_WEB_URLS");
@@ -35,6 +40,6 @@ public class WebUi
             return Results.Content(json, "application/json");
         });
 
-        app.Run();
+        await app.RunAsync(cancellationToken);
     }
 }
