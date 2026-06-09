@@ -14,7 +14,7 @@ The project is small, but it now has a clearer command-line interface and a simp
 
 ## Nice WebUI
 <img width="1888" height="824" alt="Screenshot 2026-06-09 at 23 49 11" src="https://github.com/user-attachments/assets/fe8de99c-d001-4575-abfd-948979aebdbd" />
-
+## Project Layout
 ```text
 src/
   Program.cs            CLI entrypoint
