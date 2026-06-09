@@ -82,7 +82,8 @@ internal sealed class TelegramApi
             cancellationToken: cancellationTokenSource.Token);
 
         Console.WriteLine($"Listening for @{me.Username}. Press Enter to stop.");
-        Console.ReadLine();
+        //Console.ReadLine();
+        await Task.Delay(Timeout.Infinite);
         cancellationTokenSource.Cancel();
     }
 
