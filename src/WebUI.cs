@@ -11,7 +11,8 @@ public class WebUi
     {
         var builder = WebApplication.CreateBuilder();
 
-        builder.WebHost.UseUrls("http://localhost:5010");
+        var urls = Environment.GetEnvironmentVariable("VOICE_RECOGNISEBOT_WEB_URLS");
+        builder.WebHost.UseUrls(string.IsNullOrWhiteSpace(urls) ? "http://localhost:5010" : urls);
 
         var app = builder.Build();
 

@@ -1,6 +1,6 @@
 # VoiceRecogniseTelegramBot
 
-`VoiceRecogniseTelegramBot` is a .NET 8 Telegram bot that downloads voice or audio messages, converts them to WAV, and runs Whisper transcription locally.
+`VoiceRecogniseTelegramBot` is a .NET 10 Telegram bot that downloads voice or audio messages, converts them to WAV, and runs Whisper transcription locally.
 
 The project is small, but it now has a clearer command-line interface and a simpler configuration story:
 
@@ -27,7 +27,7 @@ src/
 
 ## Requirements
 
-- .NET 8 SDK
+- .NET 10 SDK
 - A Telegram bot token from BotFather
 - `ffmpeg` available in `PATH`, or set via `FFMPEG_PATH`
 - Whisper runtime dependencies required by `Whisper.net`
@@ -36,6 +36,70 @@ src/
 
 ```bash
 dotnet build src/VoiceRecogniseBot.sln
+```
+
+## Docker
+
+Build the image:
+
+```bash
+docker build -t voice-recognise-bot .
+```
+
+Create a persistent data directory and initialize the config:
+
+```bash
+mkdir -p ./voicebot-data
+docker run --rm \
+  -v "$PWD/voicebot-data:/data" \
+  voice-recognise-bot config-set \
+  --token "123456:telegram-token" \
+  --model ggml-base \
+  --lang EN,RU,LV \
+  --default-lang EN
+```
+
+Run the bot:
+
+```bash
+docker run -d \
+  --name voice-recognise-bot \
+  --restart unless-stopped \
+  -v "$PWD/voicebot-data:/data" \
+  voice-recognise-bot
+```
+
+Run only the web UI and expose it on port 5010:
+
+```bash
+docker run --rm \
+  -p 5010:5010 \
+  -v "$PWD/voicebot-data:/data" \
+  voice-recognise-bot run web-ui
+```
+
+The container stores config, stats, and managed Whisper models in `/data`.
+
+## Linux Systemd Install
+
+Install and start the bot as a `systemd` service:
+
+```bash
+sudo ./scripts/install-linux.sh \
+  --token "123456:telegram-token" \
+  --model ggml-base \
+  --lang EN,RU,LV \
+  --default-lang EN
+```
+
+The installer publishes the app to `/opt/voice-recognise-bot`, stores runtime data in `/var/lib/voice-recognise-bot`, installs `/etc/systemd/system/voice-recognise-bot.service`, enables the service, and starts it.
+
+Service helper:
+
+```bash
+./scripts/voicebotctl.sh status
+./scripts/voicebotctl.sh logs
+./scripts/voicebotctl.sh restart
 ```
 
 ## Configuration
@@ -93,7 +157,7 @@ Notes:
 
 ## Cross-Platform Publish
 
-The project is no longer pinned to one operating system. It can be built on any supported .NET 8 host and published for Windows, Linux, or macOS by choosing the runtime identifier at publish time.
+The project is no longer pinned to one operating system. It can be built on any supported .NET 10 host and published for Windows, Linux, or macOS by choosing the runtime identifier at publish time.
 
 Example Windows publish:
 
@@ -159,7 +223,7 @@ dotnet run --project src/VoiceRecogniseBot.csproj -- run
 
 - The Telegram bot listens for voice, audio, video note, and video updates
 - Voice, audio, and video files are converted to 16 kHz mono WAV with `ffmpeg` through `FFMpegCore` before Whisper transcription
-- A simple local HTTP server listens on `http://localhost:8000/` and returns basic JSON stats
+- A simple local HTTP server listens on `http://localhost:5010/` and returns basic JSON stats
 - Message counters are written to `stats.json`
 
 ## Telegram Controls

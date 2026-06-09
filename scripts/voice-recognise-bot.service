@@ -1,0 +1,24 @@
+[Unit]
+Description=VoiceRecogniseTelegramBot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=voicebot
+Group=voicebot
+WorkingDirectory=/opt/voice-recognise-bot
+Environment=VOICE_RECOGNISEBOT_HOME=/var/lib/voice-recognise-bot
+Environment=FFMPEG_PATH=/usr/bin
+Environment=DOTNET_ENVIRONMENT=Production
+ExecStart=/usr/bin/dotnet /opt/voice-recognise-bot/VoiceRecogniseBot.dll run
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/voice-recognise-bot
+
+[Install]
+WantedBy=multi-user.target
