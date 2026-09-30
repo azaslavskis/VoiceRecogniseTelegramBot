@@ -60,6 +60,10 @@ overrides:
       - libgomp
       - libstdc++
       - openssl-libs
+      # useradd for the install script and runuser for the /usr/bin launcher; minimal
+      # installations and container images do not have them.
+      - shadow-utils
+      - util-linux
       - zlib
     # ffmpeg is not in the base repositories of every RPM distribution (RHEL needs RPM Fusion),
     # so it must not block the installation.

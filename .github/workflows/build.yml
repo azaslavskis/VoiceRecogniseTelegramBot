@@ -70,6 +70,8 @@ jobs:
       - name: Smoke test the deb
         if: matrix.arch == 'x64'
         run: |
+          # Name the failing command in an annotation, which is readable without opening the log.
+          trap 'echo "::error title=deb smoke test::line $LINENO: $BASH_COMMAND"' ERR
           sudo apt-get update
           sudo apt-get install -y ./dist/*.deb
           [ "$(voice-recognise-bot --version)" = "$VERSION" ]
@@ -89,6 +91,8 @@ jobs:
       - name: Smoke test the AppImage
         if: matrix.arch == 'x64'
         run: |
+          # Name the failing command in an annotation, which is readable without opening the log.
+          trap 'echo "::error title=AppImage smoke test::line $LINENO: $BASH_COMMAND"' ERR
           appimage="$(ls dist/*.AppImage)"
           [ "$("$appimage" --appimage-extract-and-run --version)" = "$VERSION" ]
           "$appimage" --appimage-extract-and-run info
@@ -96,8 +100,10 @@ jobs:
       - name: Smoke test the rpm
         if: matrix.arch == 'x64'
         run: |
+          # Name the failing command in an annotation, which is readable without opening the log.
+          trap 'echo "::error title=rpm smoke test::line $LINENO: $BASH_COMMAND"' ERR
           docker run --rm -v "$PWD/dist:/dist:ro" fedora:latest sh -c '
-            set -e
+            set -ex
             dnf install -y --setopt=install_weak_deps=False /dist/*.x86_64.rpm
             voice-recognise-bot --version
             voice-recognise-bot info
