@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- Release builds override this with the tag version (-p:Version=...). -->
-    <Version>2.2.0</Version>
+    <Version>2.2.1</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Avoids a runtime dependency on libicu in the Linux packages. -->
     <InvariantGlobalization>true</InvariantGlobalization>

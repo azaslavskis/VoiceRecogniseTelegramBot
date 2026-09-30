@@ -78,6 +78,12 @@ jobs:
           systemctl is-active voice-recognise-bot
           sudo voice-recognise-bot info
 
+          # Files owned by root in the data directory must not lock the service user out.
+          sudo chown root:root /var/lib/voice-recognise-bot/appsettings.json
+          sudo chmod 600 /var/lib/voice-recognise-bot/appsettings.json
+          sudo voice-recognise-bot config set --lang EN,DE
+          [ "$(stat -c %U /var/lib/voice-recognise-bot/appsettings.json)" = voicebot ]
+
           # End to end through ffmpeg and the native Whisper libraries.
           ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=2" /tmp/tone.ogg
           sudo voice-recognise-bot transcribe /tmp/tone.ogg --model ggml-tiny --lang EN
