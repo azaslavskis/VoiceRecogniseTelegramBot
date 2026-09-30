@@ -188,8 +188,9 @@ docs/cli.md              command-line reference
 
 ## Releases
 
-Every push builds the packages and smoke-tests them in GitHub Actions. Pushing a tag publishes
-a release:
+Every push builds the packages and smoke-tests them in GitHub Actions. To publish a release,
+add a section for the version to [CHANGELOG.md](CHANGELOG.md), which becomes the release notes,
+and push a tag:
 
 ```bash
 git tag v2.2.0

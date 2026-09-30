@@ -165,6 +165,8 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -174,11 +176,21 @@ jobs:
         working-directory: dist
         run: sha256sum * > SHA256SUMS
 
-      # Re-running the workflow for an existing release replaces its files instead of failing.
+      # The release notes are this version's section of CHANGELOG.md, without its heading.
+      - name: Release notes
+        run: |
+          awk -v version="${TAG#v}" '/^## / { in_section = ($2 == version); next } in_section' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## ${TAG#v}' section. Add one before tagging a release."
+            exit 1
+          fi
+
+      # Re-running the workflow for an existing release replaces its files and notes instead of failing.
       - name: Publish release
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes-file notes.md
           else
-            gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+            gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md
           fi
