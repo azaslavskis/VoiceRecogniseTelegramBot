@@ -10,7 +10,16 @@ APP=/opt/voice-recognise-bot/VoiceRecogniseBot
 SERVICE_USER=voicebot
 SERVICE_HOME=/var/lib/voice-recognise-bot
 
-if [ "$(id -u)" -eq 0 ] && [ -z "${VOICE_RECOGNISEBOT_HOME:-}" ] && id "$SERVICE_USER" >/dev/null 2>&1; then
+# VOICE_RECOGNISEBOT_HOME pointing anywhere else means root deliberately wants another data directory.
+DATA_HOME="${VOICE_RECOGNISEBOT_HOME:-$SERVICE_HOME}"
+
+if [ "$(id -u)" -eq 0 ] && [ "${DATA_HOME%/}" = "$SERVICE_HOME" ] && id "$SERVICE_USER" >/dev/null 2>&1; then
+    # Files left behind by an older root-run installation, or created by running the program
+    # directly as root, would be unreadable for the service user.
+    if [ -n "$(find "$SERVICE_HOME" ! -user "$SERVICE_USER" -print -quit 2>/dev/null)" ]; then
+        chown -R "$SERVICE_USER:$SERVICE_USER" "$SERVICE_HOME"
+    fi
+
     if [ -r /etc/default/voice-recognise-bot ]; then
         set -a
         . /etc/default/voice-recognise-bot
