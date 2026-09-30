@@ -1,4 +1,15 @@
+# Build output
+bin/
+obj/
+/build/
+/dist/
+/publish/
 
+# IDE and OS files
+.vs/
+.idea/
+.vscode/
+*.user
 *.vsidx
-*.vsidx
-.vs/VoiceRecogniseTelegramBot/v17/.wsuo
+.DS_Store
+Thumbs.db

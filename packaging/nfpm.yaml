@@ -1,0 +1,67 @@
+# Package definition for the .deb and .rpm builds. Used by packaging/build-packages.sh,
+# which fills in the ${PKG_VERSION}, ${PKG_ARCH} and ${PUBLISH_DIR} placeholders.
+name: voice-recognise-bot
+arch: ${PKG_ARCH}
+platform: linux
+version: ${PKG_VERSION}
+section: utils
+priority: optional
+maintainer: Alex Zaslavskis <azaslavskis@users.noreply.github.com>
+homepage: https://github.com/azaslavskis/VoiceRecogniseTelegramBot
+license: MIT
+description: |
+  Telegram bot that transcribes voice messages locally with Whisper.
+  Includes a systemd service, a web UI for settings and statistics,
+  and the voice-recognise-bot command-line tool.
+
+contents:
+  - src: ${PUBLISH_DIR}/
+    dst: /opt/voice-recognise-bot
+    type: tree
+  - src: packaging/linux/voice-recognise-bot
+    dst: /usr/bin/voice-recognise-bot
+    file_info:
+      mode: 0755
+  - src: packaging/linux/voice-recognise-bot.service
+    dst: /usr/lib/systemd/system/voice-recognise-bot.service
+    file_info:
+      mode: 0644
+  - src: packaging/linux/voice-recognise-bot.default
+    dst: /etc/default/voice-recognise-bot
+    type: config|noreplace
+    file_info:
+      mode: 0644
+  - src: src/LICENSE.txt
+    dst: /usr/share/doc/voice-recognise-bot/copyright
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/linux/postinstall.sh
+  preremove: packaging/linux/preremove.sh
+  postremove: packaging/linux/postremove.sh
+
+overrides:
+  deb:
+    depends:
+      - ffmpeg
+      - ca-certificates
+      - libc6
+      - libgcc-s1
+      - libgomp1
+      - libstdc++6
+      - libssl3 | libssl3t64 | libssl1.1
+      - zlib1g
+  rpm:
+    depends:
+      - ca-certificates
+      - glibc
+      - libgcc
+      - libgomp
+      - libstdc++
+      - openssl-libs
+      - zlib
+    # ffmpeg is not in the base repositories of every RPM distribution (RHEL needs RPM Fusion),
+    # so it must not block the installation.
+    recommends:
+      - /usr/bin/ffmpeg

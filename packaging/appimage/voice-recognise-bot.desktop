@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Voice Recognise Bot
+Comment=Telegram bot that transcribes voice messages locally with Whisper
+Exec=voice-recognise-bot
+Icon=voice-recognise-bot
+Terminal=true
+Categories=Utility;

@@ -1,0 +1,9 @@
+# Environment for the voice-recognise-bot service.
+# Restart the service after changing this file: sudo systemctl restart voice-recognise-bot
+
+# Address the web UI listens on. The default only accepts connections from this machine.
+# The web UI has no login, so expose it only on networks you trust.
+#VOICE_RECOGNISEBOT_WEB_URLS=http://0.0.0.0:5010
+
+# Folder containing the ffmpeg executable, if it is not on PATH.
+#FFMPEG_PATH=/usr/bin

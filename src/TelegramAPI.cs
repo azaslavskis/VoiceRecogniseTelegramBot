@@ -1,5 +1,5 @@
+using System.Collections.Concurrent;
 using Telegram.Bot;
-using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -7,92 +7,115 @@ using Telegram.Bot.Types.ReplyMarkups;
 namespace VoiceRecogniseBot;
 
 /// <summary>
-/// Provides functionality to interact with the Telegram API for speech recognition.
+/// Receives Telegram updates and replies with transcriptions of voice, audio and video messages.
 /// </summary>
-internal sealed class TelegramApi
+internal sealed class TelegramApi : IDisposable
 {
     private const string StartCommand = "start";
     private const string SlashStartCommand = "/start";
+    private const int MaxMessageLength = 4096;
+    private const int LogLinesInChat = 30;
 
-    private readonly WhisperAPI _voiceRecognise = new();
-    private readonly List<string> _languagesInUse;
-    private readonly TelegramBotClient? _botClient;
-    private readonly string _token;
-    private readonly BotTextConfig _botText;
-    private string _currentLanguage;
+    private static readonly TimeSpan ConfigPollInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
-    private static readonly TelegramBotLogger AppLog = new();
+    private readonly WhisperApi _whisper = new();
+    private readonly ConcurrentDictionary<long, string> _chatLanguages = new();
 
-    public TelegramApi()
+    /// <summary>
+    /// Runs the bot until cancelled. The token is re-read from the configuration, so setting or
+    /// changing it (for example from the web UI) starts or reconnects the bot without a restart.
+    /// </summary>
+    public async Task RunAsync(CancellationToken cancellationToken)
     {
-        var config = new Config().LoadAppConfig();
-        _botText = config.BotText ?? new BotTextConfig();
-
-        _currentLanguage = string.IsNullOrWhiteSpace(config.DefaultLang)
-            ? "EN"
-            : config.DefaultLang;
-
-        _languagesInUse = config.Lang
-            .Where(lang => !string.IsNullOrWhiteSpace(lang))
-            .Select(lang => lang.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (_languagesInUse.Count == 0)
-        {
-            _languagesInUse.Add(_currentLanguage);
-        }
-
-        _token = config.Token?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(_token) || string.Equals(_token, "xxxx", StringComparison.OrdinalIgnoreCase))
-        {
-            Console.WriteLine("Telegram bot token is not configured. Use config-set --token <value> first.");
-            AppLog.logger.Error("Telegram bot token is missing.");
-            return;
-        }
-
-        AppLog.logger.Info("Loaded Telegram configuration. Default language: {0}. Languages: {1}",
-            _currentLanguage,
-            string.Join(", ", _languagesInUse));
-
-        _botClient = new TelegramBotClient(_token);
-    }
-
-    public async Task RunAsync(CancellationToken cancellationToken = default)
-    {
-        if (_botClient is null)
-        {
-            return;
-        }
-
-        var me = await _botClient.GetMe(cancellationToken);
-        AppLog.logger.Info("Bot authenticated as {0} ({1})", me.Username, me.Id);
-
-        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var receiverOptions = new ReceiverOptions
-        {
-            AllowedUpdates = []
-        };
-
-        _botClient.StartReceiving(
-            updateHandler: HandleUpdateAsync,
-            errorHandler: HandlePollingErrorAsync,
-            receiverOptions: receiverOptions,
-            cancellationToken: cancellationTokenSource.Token);
-
-        Console.WriteLine($"Listening for @{me.Username}. Press Ctrl+C to stop.");
-
         try
         {
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationTokenSource.Token);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var token = ConfigStore.Load().Token;
+                if (!ConfigStore.IsTokenConfigured(token))
+                {
+                    BotStatus.Set(BotState.WaitingForToken);
+                    AppLog.Logger.Warn("Telegram bot token is not configured. Set it in the web UI or with 'config-set --token <value>'.");
+                    await WaitForTokenChangeAsync(token, Timeout.InfiniteTimeSpan, cancellationToken);
+                    continue;
+                }
+
+                await RunSessionAsync(token, cancellationToken);
+            }
         }
-        catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            AppLog.logger.Info("Telegram bot shutdown requested.");
+            AppLog.Logger.Info("Telegram bot shutdown requested.");
         }
         finally
         {
-            await cancellationTokenSource.CancelAsync();
+            BotStatus.Set(BotState.Stopped);
+        }
+    }
+
+    public void Dispose() => _whisper.Dispose();
+
+    /// <summary>
+    /// Connects with one token and receives updates until the token changes or shutdown is requested.
+    /// </summary>
+    private async Task RunSessionAsync(string token, CancellationToken cancellationToken)
+    {
+        BotStatus.Set(BotState.Connecting);
+
+        TelegramBotClient botClient;
+        User me;
+        try
+        {
+            botClient = new TelegramBotClient(token);
+            me = await botClient.GetMe(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A rejected token stays rejected, a network failure may recover: retry after a delay
+            // unless the token is changed first.
+            AppLog.Logger.Error("Could not connect to Telegram: {0}", ex.Message);
+            AppLog.Logger.Debug(ex, "Connection failure details");
+            BotStatus.Set(BotState.Error, error: ex.Message);
+            await WaitForTokenChangeAsync(token, RetryDelay, cancellationToken);
+            return;
+        }
+
+        using var sessionTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        botClient.StartReceiving(
+            updateHandler: HandleUpdateAsync,
+            errorHandler: HandlePollingErrorAsync,
+            receiverOptions: new ReceiverOptions { AllowedUpdates = [] },
+            cancellationToken: sessionTokenSource.Token);
+
+        BotStatus.Set(BotState.Online, username: me.Username);
+        AppLog.Logger.Info("Listening as @{0} ({1})", me.Username, me.Id);
+
+        try
+        {
+            await WaitForTokenChangeAsync(token, Timeout.InfiniteTimeSpan, cancellationToken);
+            AppLog.Logger.Info("Telegram token changed; reconnecting.");
+        }
+        finally
+        {
+            await sessionTokenSource.CancelAsync();
+        }
+    }
+
+    /// <summary>
+    /// Completes when the configured token differs from <paramref name="currentToken"/> or the timeout elapses.
+    /// </summary>
+    private static async Task WaitForTokenChangeAsync(string currentToken, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var deadline = timeout == Timeout.InfiniteTimeSpan ? DateTime.MaxValue : DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(ConfigPollInterval, cancellationToken);
+            if (!string.Equals(ConfigStore.Load().Token, currentToken, StringComparison.Ordinal))
+            {
+                return;
+            }
         }
     }
 
@@ -104,198 +127,167 @@ internal sealed class TelegramApi
             return;
         }
 
-        AppLog.logger.Debug("Received update {0} of type {1}", message.Date, message.Type);
-        new StatsManager().IncrementMessageCount();
+        AppLog.Logger.Debug("Received message {0} of type {1}", message.Id, message.Type);
+        StatsStore.RecordMessage();
 
-        await HandleMediaMessageAsync(botClient, message, cancellationToken);
-        await HandleTextMessageAsync(botClient, message, cancellationToken);
-    }
-
-    private async Task HandleMediaMessageAsync(ITelegramBotClient botClient, Message message, CancellationToken cancellationToken)
-    {
-        var fileId = GetTranscriptionFileId(message);
-        if (fileId is null)
-        {
-            return;
-        }
-
-        var telegramFile = await botClient.GetFile(fileId, cancellationToken);
-        var destinationFilePath = CreateDownloadPath(telegramFile.FilePath, message);
+        var config = ConfigStore.Load();
         try
         {
-            AppLog.logger.Debug("Downloading media file {0} to {1}", fileId, destinationFilePath);
-
-            await using (var fileStream = File.Create(destinationFilePath))
+            if (GetTranscriptionFileId(message) is { } fileId)
             {
-                await botClient.GetInfoAndDownloadFile(fileId, fileStream, cancellationToken);
+                await HandleMediaMessageAsync(botClient, message, fileId, config, cancellationToken);
+            }
+            else if (!string.IsNullOrWhiteSpace(message.Text))
+            {
+                await HandleTextMessageAsync(botClient, message.Chat.Id, message.Text.Trim(), config, cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // One failing message must not take the receive loop down with it.
+            AppLog.Logger.Error(ex, "Failed to handle message {0}", message.Id);
+        }
+    }
+
+    private async Task HandleMediaMessageAsync(
+        ITelegramBotClient botClient,
+        Message message,
+        string fileId,
+        AppConfig config,
+        CancellationToken cancellationToken)
+    {
+        var chatId = message.Chat.Id;
+        var language = GetChatLanguage(chatId, config);
+        var telegramFile = await botClient.GetFile(fileId, cancellationToken);
+        var downloadPath = TempFiles.Create(GetPreferredExtension(telegramFile.FilePath, message));
+
+        try
+        {
+            AppLog.Logger.Debug("Downloading media file {0} to {1}", fileId, downloadPath);
+            await using (var fileStream = File.Create(downloadPath))
+            {
+                await botClient.DownloadFile(telegramFile, fileStream, cancellationToken);
             }
 
-            await botClient.SendMessage(
-                message.Chat.Id,
-                _botText.TranscriptionInProgressMessage,
-                cancellationToken: cancellationToken);
+            await botClient.SendMessage(chatId, config.BotText.TranscriptionInProgressMessage, cancellationToken: cancellationToken);
 
-            string? recognisedText;
+            string recognisedText;
             try
             {
-                recognisedText = RecogniseDownloadedFile(message, destinationFilePath);
+                recognisedText = await _whisper.TranscribeAsync(downloadPath, config.Model, language, cancellationToken);
             }
             catch (MediaConversionException ex)
             {
-                AppLog.logger.Error(ex, "Media conversion failed for file {0}", destinationFilePath);
-                await botClient.SendMessage(
-                    message.Chat.Id,
-                    ex.Message,
-                    cancellationToken: cancellationToken);
+                AppLog.Logger.Error(ex, "Media conversion failed for file {0}", downloadPath);
+                await botClient.SendMessage(chatId, ex.Message, cancellationToken: cancellationToken);
                 return;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.logger.Error(ex, "Unexpected transcription error for file {0}", destinationFilePath);
-                await botClient.SendMessage(
-                    message.Chat.Id,
-                    _botText.InternalErrorMessage,
-                    cancellationToken: cancellationToken);
+                AppLog.Logger.Error(ex, "Unexpected transcription error for file {0}", downloadPath);
+                await botClient.SendMessage(chatId, config.BotText.InternalErrorMessage, cancellationToken: cancellationToken);
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(recognisedText))
-            {
-                return;
-            }
+            StatsStore.RecordTranscription();
 
-            var response = $"{_botText.TranscriptionResultPrefix}\n{recognisedText}";
-            await botClient.SendMessage(
-                chatId: message.Chat.Id,
-                text: response,
-                cancellationToken: cancellationToken);
+            if (!string.IsNullOrWhiteSpace(recognisedText))
+            {
+                await SendLongMessageAsync(botClient, chatId, $"{config.BotText.TranscriptionResultPrefix}\n{recognisedText}", cancellationToken);
+            }
         }
         finally
         {
-            TryDeleteTempFile(destinationFilePath);
+            TempFiles.TryDelete(downloadPath);
         }
     }
 
-    private string? RecogniseDownloadedFile(Message message, string destinationFilePath)
+    private async Task HandleTextMessageAsync(
+        ITelegramBotClient botClient,
+        long chatId,
+        string text,
+        AppConfig config,
+        CancellationToken cancellationToken)
     {
-        if (message.Voice is not null)
-        {
-            AppLog.logger.Debug("Sending voice file for transcription. Language: {0}", _currentLanguage);
-            return _voiceRecognise.RecogniseVoiceFile(destinationFilePath, _currentLanguage);
-        }
+        var botText = config.BotText;
 
-        if (message.Audio is not null)
+        var requestedLanguage = config.Lang.FirstOrDefault(lang => string.Equals(lang, text, StringComparison.OrdinalIgnoreCase));
+        if (requestedLanguage is not null)
         {
-            AppLog.logger.Debug("Sending audio file for transcription. Language: {0}", _currentLanguage);
-            return _voiceRecognise.RecogniseAudioFile(destinationFilePath, _currentLanguage);
-        }
-
-        if (message.VideoNote is not null || message.Video is not null)
-        {
-            AppLog.logger.Debug("Sending video file for transcription. Language: {0}", _currentLanguage);
-            return _voiceRecognise.RecogniseVideoFile(destinationFilePath, _currentLanguage);
-        }
-
-        return null;
-    }
-
-    private async Task HandleTextMessageAsync(ITelegramBotClient botClient, Message message, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(message.Text))
-        {
+            _chatLanguages[chatId] = requestedLanguage;
+            AppLog.Logger.Info("Recognition language for chat {0} changed to {1}", chatId, requestedLanguage);
+            await botClient.SendMessage(chatId, $"{botText.LanguageChangedPrefix} {requestedLanguage}", cancellationToken: cancellationToken);
             return;
         }
 
-        var text = message.Text.Trim();
-        var chatId = message.Chat.Id;
-
-        if (TrySetLanguage(text))
+        if (text is StartCommand or SlashStartCommand)
         {
-            await botClient.SendMessage(
-                chatId,
-                $"{_botText.LanguageChangedPrefix} {_currentLanguage}",
-                cancellationToken: cancellationToken);
-            return;
+            var keyboard = new ReplyKeyboardMarkup([[botText.SetLanguageButton, botText.LogButton, botText.AboutButton]])
+            {
+                ResizeKeyboard = true
+            };
+            await botClient.SendMessage(chatId, botText.MainMenuPrompt, replyMarkup: keyboard, cancellationToken: cancellationToken);
         }
-
-        switch (text)
+        else if (text == botText.SetLanguageButton)
         {
-            case StartCommand:
-            case SlashStartCommand:
-                await SendMainKeyboardAsync(botClient, chatId, cancellationToken);
-                return;
-            case var value when string.Equals(value, _botText.SetLanguageButton, StringComparison.Ordinal):
-                await SendLanguageKeyboardAsync(botClient, chatId, cancellationToken);
-                return;
-            case var value when string.Equals(value, _botText.AboutButton, StringComparison.Ordinal):
-                await botClient.SendMessage(
-                    chatId,
-                    _botText.AboutMessage,
-                    cancellationToken: cancellationToken);
-                return;
-            case var value when string.Equals(value, _botText.LogButton, StringComparison.Ordinal):
-                await botClient.SendMessage(
-                    chatId,
-                    AppLog.ReturnLogAsString(),
-                    cancellationToken: cancellationToken);
-                return;
-            default:
-                await botClient.SendMessage(
-                    chatId,
-                    _botText.UnknownCommandMessage,
-                    cancellationToken: cancellationToken);
-                return;
+            var keyboard = new ReplyKeyboardMarkup(config.Lang.Select(lang => new[] { new KeyboardButton(lang) }))
+            {
+                ResizeKeyboard = true
+            };
+            await botClient.SendMessage(chatId, botText.LanguagePrompt, replyMarkup: keyboard, cancellationToken: cancellationToken);
+        }
+        else if (text == botText.AboutButton)
+        {
+            await botClient.SendMessage(chatId, botText.AboutMessage, cancellationToken: cancellationToken);
+        }
+        else if (text == botText.LogButton)
+        {
+            var lines = AppLog.ReadTail(LogLinesInChat);
+            var log = lines.Count == 0 ? "No log messages yet." : string.Join('\n', lines);
+
+            // Keep the most recent part when the tail does not fit into one message.
+            await botClient.SendMessage(chatId, log.Length > MaxMessageLength ? log[^MaxMessageLength..] : log, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            await botClient.SendMessage(chatId, botText.UnknownCommandMessage, cancellationToken: cancellationToken);
         }
     }
 
-    private async Task SendMainKeyboardAsync(ITelegramBotClient botClient, long chatId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Returns the language chosen in this chat, falling back to the default when none was chosen
+    /// or the choice has since been removed from the configuration.
+    /// </summary>
+    private string GetChatLanguage(long chatId, AppConfig config)
     {
-        var keyboard = new ReplyKeyboardMarkup([
-            [_botText.SetLanguageButton, _botText.LogButton, _botText.AboutButton]
-        ])
-        {
-            ResizeKeyboard = true
-        };
-
-        await botClient.SendMessage(
-            chatId,
-            _botText.MainMenuPrompt,
-            replyMarkup: keyboard,
-            cancellationToken: cancellationToken);
+        return _chatLanguages.TryGetValue(chatId, out var language) && config.Lang.Contains(language)
+            ? language
+            : config.DefaultLang;
     }
 
-    private async Task SendLanguageKeyboardAsync(ITelegramBotClient botClient, long chatId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Telegram rejects messages above 4096 characters, so long transcriptions are sent in parts,
+    /// split on line breaks where possible.
+    /// </summary>
+    private static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string text, CancellationToken cancellationToken)
     {
-        var buttons = _languagesInUse
-            .Select(lang => new KeyboardButton(lang))
-            .Select(button => new[] { button })
-            .ToArray();
+        var remaining = text.AsMemory().TrimEnd();
 
-        var keyboard = new ReplyKeyboardMarkup(buttons)
+        while (remaining.Length > 0)
         {
-            ResizeKeyboard = true
-        };
+            var length = Math.Min(remaining.Length, MaxMessageLength);
+            if (length < remaining.Length)
+            {
+                var lineBreak = remaining.Span[..length].LastIndexOf('\n');
+                if (lineBreak > 0)
+                {
+                    length = lineBreak;
+                }
+            }
 
-        await botClient.SendMessage(
-            chatId,
-            _botText.LanguagePrompt,
-            replyMarkup: keyboard,
-            cancellationToken: cancellationToken);
-    }
-
-    private bool TrySetLanguage(string text)
-    {
-        var matchedLanguage = _languagesInUse
-            .FirstOrDefault(lang => string.Equals(lang, text, StringComparison.OrdinalIgnoreCase));
-
-        if (matchedLanguage is null)
-        {
-            return false;
+            await botClient.SendMessage(chatId, remaining[..length].ToString(), cancellationToken: cancellationToken);
+            remaining = remaining[length..].TrimStart();
         }
-
-        _currentLanguage = matchedLanguage;
-        AppLog.logger.Info("Recognition language changed to {0}", _currentLanguage);
-        return true;
     }
 
     private static string? GetTranscriptionFileId(Message message)
@@ -304,12 +296,6 @@ internal sealed class TelegramApi
                ?? message.Audio?.FileId
                ?? message.VideoNote?.FileId
                ?? message.Video?.FileId;
-    }
-
-    private static string CreateDownloadPath(string? telegramFilePath, Message message)
-    {
-        var extension = GetPreferredExtension(telegramFilePath, message);
-        return Path.ChangeExtension(Path.GetTempFileName(), extension);
     }
 
     private static string GetPreferredExtension(string? telegramFilePath, Message message)
@@ -331,40 +317,36 @@ internal sealed class TelegramApi
             return ".ogg";
         }
 
-        if (message.Video is not null || message.VideoNote is not null)
-        {
-            return ".mp4";
-        }
-
-        return ".bin";
+        return message.Video is not null || message.VideoNote is not null ? ".mp4" : ".bin";
     }
 
-    private static void TryDeleteTempFile(string path)
+    private static Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
     {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLog.logger.Warn(ex, "Could not delete temporary file {0}", path);
-        }
-    }
-
-    private Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
-    {
-        var errorMessage = exception switch
-        {
-            ApiRequestException apiRequestException
-                => $"Telegram API Error:\n[{apiRequestException.ErrorCode}]\n{apiRequestException.Message}",
-            _ => exception.ToString()
-        };
-
-        Console.WriteLine(errorMessage);
-        AppLog.logger.Error(exception, "Telegram polling error");
+        AppLog.Logger.Error(exception, "Telegram polling error");
         return Task.CompletedTask;
+    }
+}
+
+internal enum BotState
+{
+    /// <summary>The bot does not run in this process (web UI only).</summary>
+    NotRunning,
+    WaitingForToken,
+    Connecting,
+    Online,
+    Error,
+    Stopped
+}
+
+/// <summary>
+/// Connection state of the bot in this process, reported by the web UI.
+/// </summary>
+internal sealed record BotStatus(BotState State, string? Username = null, string? Error = null)
+{
+    public static BotStatus Current { get; private set; } = new(BotState.NotRunning);
+
+    public static void Set(BotState state, string? username = null, string? error = null)
+    {
+        Current = new BotStatus(state, username, error);
     }
 }

@@ -5,172 +5,187 @@ using Whisper.net.Ggml;
 namespace VoiceRecogniseBot;
 
 /// <summary>
-/// Provides functionality to interact with Whisper for speech recognition.
+/// Transcribes media files with a locally loaded Whisper model.
 /// </summary>
-internal sealed class WhisperAPI
+internal sealed class WhisperApi : IDisposable
 {
-    private static readonly TelegramBotLogger AppLog = new();
-    private static readonly SettingsPathClass SettingsPath = new();
+    /// <summary>
+    /// Names of the models that can be downloaded, for example "ggml-base" or "ggml-large-v3-turbo".
+    /// </summary>
+    public static IReadOnlyList<string> DownloadableModels { get; } = Enum.GetNames<GgmlType>().Select(ToModelName).ToList();
 
-    private readonly string _modelName;
-    private readonly string _modelPath;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private WhisperFactory? _factory;
+    private string? _loadedModel;
 
-    public WhisperAPI()
+    /// <summary>
+    /// Converts the media file to WAV and returns the transcription, one line per segment.
+    /// </summary>
+    public async Task<string> TranscribeAsync(string filePath, string model, string language, CancellationToken cancellationToken)
     {
-        var config = new Config().LoadAppConfig();
-        _modelName = string.IsNullOrWhiteSpace(config.Model) ? "ggml-base" : config.Model.Trim();
-        _modelPath = ResolveModelPath(_modelName);
-
-        AppLog.logger.Debug("Configured Whisper model alias/path: {0}", _modelName);
-        AppLog.logger.Debug("Resolved Whisper model path: {0}", _modelPath);
-        EnsureModelExists();
-    }
-
-    internal string RecogniseVoiceFile(string filePath, string? lang)
-    {
-        var converter = new AudioToWav();
-        var wavPath = converter.ConvertToWav(filePath);
-
+        // Whisper is CPU and memory heavy, so only one transcription runs at a time.
+        await _gate.WaitAsync(cancellationToken);
+        string? wavPath = null;
         try
         {
-            using var fileStream = File.OpenRead(wavPath);
-            return ProcessAudio(fileStream, filePath, lang);
-        }
-        finally
-        {
-            TryDeleteTempFile(wavPath);
-        }
-    }
+            wavPath = await AudioToWav.ConvertToWavAsync(filePath, cancellationToken);
 
-    internal string RecogniseAudioFile(string filePath, string? lang)
-    {
-        return RecogniseGenericMediaFile(filePath, lang);
-    }
+            var factory = await GetFactoryAsync(model, cancellationToken);
+            var whisperLanguage = string.IsNullOrWhiteSpace(language) ? "en" : language.Trim().ToLowerInvariant();
+            AppLog.Logger.Debug("Transcribing {0} with language {1}", filePath, whisperLanguage);
 
-    internal string RecogniseVideoFile(string filePath, string? lang)
-    {
-        return RecogniseGenericMediaFile(filePath, lang);
-    }
+            await using var processor = factory.CreateBuilder()
+                .WithLanguage(whisperLanguage)
+                .Build();
 
-    private string RecogniseGenericMediaFile(string filePath, string? lang)
-    {
-        var converter = new AudioToWav();
-        var wavPath = converter.ConvertToWav(filePath);
+            await using var wavStream = File.OpenRead(wavPath);
+            var builder = new StringBuilder();
 
-        try
-        {
-            using var fileStream = File.OpenRead(wavPath);
-            return ProcessAudio(fileStream, filePath, lang);
-        }
-        finally
-        {
-            TryDeleteTempFile(wavPath);
-        }
-    }
-
-    private string ProcessAudio(Stream fileStream, string sourceFile, string? lang)
-    {
-        var language = string.IsNullOrWhiteSpace(lang) ? "en" : lang.Trim().ToLowerInvariant();
-        AppLog.logger.Debug("Preparing Whisper processor with language {0}", language);
-
-        using var whisperFactory = WhisperFactory.FromPath(_modelPath);
-        using var processor = whisperFactory.CreateBuilder()
-            .WithLanguage(language)
-            .Build();
-
-        var output = processor.ProcessAsync(fileStream);
-        var builder = new StringBuilder();
-
-        foreach (var result in output.ToBlockingEnumerable())
-        {
-            var line = $"{result.Start}->{result.End}: {result.Text}";
-            builder.AppendLine(line);
-            AppLog.logger.Debug("Recognised value {0}", line);
-        }
-
-        AppLog.logger.Info("Transcription completed for {0}", sourceFile);
-        return builder.ToString();
-    }
-
-    private void EnsureModelExists()
-    {
-        if (File.Exists(_modelPath))
-        {
-            return;
-        }
-
-        SettingsPath.EnsureModelsDirectoryExists();
-        AppLog.logger.Info("Downloading Whisper model {0} to {1}", _modelName, _modelPath);
-        using var modelStream = WhisperGgmlDownloader.Default.GetGgmlModelAsync(ToModel(_modelName)).Result;
-        using var fileWriter = File.OpenWrite(_modelPath);
-        modelStream.CopyTo(fileWriter);
-    }
-
-    private static void TryDeleteTempFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
+            await foreach (var segment in processor.ProcessAsync(wavStream, cancellationToken))
             {
-                File.Delete(path);
+                builder.AppendLine($"{segment.Start:hh\\:mm\\:ss}->{segment.End:hh\\:mm\\:ss}: {segment.Text.Trim()}");
             }
+
+            AppLog.Logger.Info("Transcription completed for {0}", filePath);
+            return builder.ToString();
+        }
+        finally
+        {
+            _gate.Release();
+            TempFiles.TryDelete(wavPath);
+        }
+    }
+
+    /// <summary>
+    /// Returns a user-facing error when the model setting cannot be used, otherwise null.
+    /// </summary>
+    public static string? DescribeModelProblem(string model)
+    {
+        if (IsFilePath(model))
+        {
+            return File.Exists(model) ? null : $"Model file '{model}' does not exist.";
+        }
+
+        return TryParseModel(model, out _) || File.Exists(AppPaths.GetManagedModelPath(model))
+            ? null
+            : $"Unknown Whisper model '{model}'. Use a name such as ggml-base or ggml-large-v3-turbo, or a path to a model file.";
+    }
+
+    public void Dispose()
+    {
+        _factory?.Dispose();
+        _gate.Dispose();
+    }
+
+    private async Task<WhisperFactory> GetFactoryAsync(string model, CancellationToken cancellationToken)
+    {
+        if (_factory is not null && string.Equals(_loadedModel, model, StringComparison.Ordinal))
+        {
+            return _factory;
+        }
+
+        var modelPath = GetModelPath(model);
+        if (!File.Exists(modelPath))
+        {
+            await DownloadModelAsync(model, cancellationToken);
+        }
+
+        AppLog.Logger.Info("Loading Whisper model from {0}", modelPath);
+        var factory = WhisperFactory.FromPath(modelPath);
+
+        _factory?.Dispose();
+        _factory = factory;
+        _loadedModel = model;
+        return factory;
+    }
+
+    public static string GetModelPath(string model)
+    {
+        return IsFilePath(model) ? model : AppPaths.GetManagedModelPath(model);
+    }
+
+    /// <summary>
+    /// Names of the model files already present in the models directory.
+    /// </summary>
+    public static IEnumerable<string> GetLocalModels()
+    {
+        return Directory.Exists(AppPaths.ModelsDirectory)
+            ? Directory.EnumerateFiles(AppPaths.ModelsDirectory, "*.bin").Select(path => Path.GetFileNameWithoutExtension(path)!).Order()
+            : [];
+    }
+
+    public static async Task DownloadModelAsync(string model, CancellationToken cancellationToken)
+    {
+        var modelPath = GetModelPath(model);
+        if (IsFilePath(model) || !TryParseModel(model, out var ggmlType))
+        {
+            throw new InvalidOperationException(DescribeModelProblem(model) ?? $"Whisper model '{model}' is not available.");
+        }
+
+        AppLog.Logger.Info("Downloading Whisper model {0} to {1}", model, modelPath);
+        Directory.CreateDirectory(AppPaths.ModelsDirectory);
+
+        // Download to a temporary name so an interrupted download is never mistaken for a model.
+        var partialPath = modelPath + ".part";
+        try
+        {
+            await using (var modelStream = await WhisperGgmlDownloader.Default.GetGgmlModelAsync(ggmlType, cancellationToken: cancellationToken))
+            await using (var fileStream = File.Create(partialPath))
+            {
+                await modelStream.CopyToAsync(fileStream, cancellationToken);
+            }
+
+            File.Move(partialPath, modelPath, overwrite: true);
         }
         catch
         {
-            // Ignore temp cleanup failures.
+            TempFiles.TryDelete(partialPath);
+            throw;
         }
     }
 
-    private static GgmlType ToModel(string modelName)
+    /// <summary>
+    /// Turns an enum name such as "LargeV3Turbo" or "TinyEn" into "ggml-large-v3-turbo" or "ggml-tiny.en".
+    /// </summary>
+    private static string ToModelName(string ggmlTypeName)
     {
-        var normalizedName = modelName.Trim().ToLowerInvariant();
-        var modelMapping = new Dictionary<string, GgmlType>
-        {
-            { "ggml-tiny", GgmlType.Tiny },
-            { GgmlType.Tiny.ToString().ToLowerInvariant(), GgmlType.Tiny },
-            { "ggml-tiny.en", GgmlType.TinyEn },
-            { GgmlType.TinyEn.ToString().ToLowerInvariant(), GgmlType.TinyEn },
-            { "ggml-base", GgmlType.Base },
-            { "ggml-base.en", GgmlType.BaseEn },
-            { GgmlType.Base.ToString().ToLowerInvariant(), GgmlType.Base },
-            { GgmlType.BaseEn.ToString().ToLowerInvariant(), GgmlType.BaseEn },
-            { "ggml-small", GgmlType.Small },
-            { GgmlType.Small.ToString().ToLowerInvariant(), GgmlType.Small },
-            { "ggml-small.en", GgmlType.SmallEn },
-            { GgmlType.SmallEn.ToString().ToLowerInvariant(), GgmlType.SmallEn },
-            { "ggml-medium", GgmlType.Medium },
-            { GgmlType.Medium.ToString().ToLowerInvariant(), GgmlType.Medium },
-            { "ggml-medium.en", GgmlType.MediumEn },
-            { GgmlType.MediumEn.ToString().ToLowerInvariant(), GgmlType.MediumEn },
-            { "ggml-large-v1", GgmlType.LargeV1 },
-            { GgmlType.LargeV1.ToString().ToLowerInvariant(), GgmlType.LargeV1 },
-            { "ggml-large-v2", GgmlType.LargeV2 },
-            { GgmlType.LargeV2.ToString().ToLowerInvariant(), GgmlType.LargeV2 },
-            { "ggml-large-v3", GgmlType.LargeV3 },
-            { GgmlType.LargeV3.ToString().ToLowerInvariant(), GgmlType.LargeV3 },
-            { "ggml-large-v3-turbo", GgmlType.LargeV3Turbo },
-            { GgmlType.LargeV3Turbo.ToString().ToLowerInvariant(), GgmlType.LargeV3Turbo }
-        };
+        var englishOnly = ggmlTypeName.EndsWith("En", StringComparison.Ordinal);
+        var baseName = englishOnly ? ggmlTypeName[..^2] : ggmlTypeName;
+        var words = string.Concat(baseName.Select((c, index) => char.IsUpper(c) && index > 0 ? $"-{c}" : c.ToString()));
 
-        return modelMapping.TryGetValue(normalizedName, out var resolvedModel)
-            ? resolvedModel
-            : GgmlType.Base;
+        return $"ggml-{words.ToLowerInvariant()}{(englishOnly ? ".en" : string.Empty)}";
     }
 
-    private static string ResolveModelPath(string modelName)
+    private static bool IsFilePath(string model)
     {
-        if (Path.IsPathRooted(modelName) ||
-            modelName.Contains(Path.DirectorySeparatorChar) ||
-            modelName.Contains(Path.AltDirectorySeparatorChar))
+        return Path.IsPathRooted(model) ||
+               model.Contains(Path.DirectorySeparatorChar) ||
+               model.Contains(Path.AltDirectorySeparatorChar);
+    }
+
+    /// <summary>
+    /// Maps names such as "ggml-large-v3-turbo", "base.en" or "LargeV3Turbo" to a downloadable model.
+    /// </summary>
+    private static bool TryParseModel(string model, out GgmlType ggmlType)
+    {
+        var name = model.Trim().ToLowerInvariant();
+        if (name.EndsWith(".bin", StringComparison.Ordinal))
         {
-            return modelName;
+            name = name[..^4];
         }
 
-        if (File.Exists(modelName))
+        if (name.StartsWith("ggml-", StringComparison.Ordinal))
         {
-            return modelName;
+            name = name[5..];
         }
 
-        return SettingsPath.GetManagedModelPath(modelName);
+        name = name.Replace(".", string.Empty).Replace("-", string.Empty);
+
+        // Enum.TryParse also accepts numeric strings, which are not valid model names.
+        ggmlType = default;
+        return name.Length > 0 &&
+               !char.IsDigit(name[0]) &&
+               Enum.TryParse(name, ignoreCase: true, out ggmlType) &&
+               Enum.IsDefined(ggmlType);
     }
 }

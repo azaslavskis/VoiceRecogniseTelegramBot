@@ -1,0 +1,12 @@
+* text=auto
+
+# These run on Linux and break with CRLF line endings.
+*.sh text eol=lf
+*.service text eol=lf
+*.desktop text eol=lf
+*.default text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+packaging/linux/voice-recognise-bot text eol=lf
+packaging/appimage/AppRun text eol=lf
+Dockerfile text eol=lf

@@ -1,0 +1,172 @@
+name: Build
+
+# Every push builds and smoke-tests the packages. Pushing a tag such as v2.2.0 also
+# publishes them as a GitHub release.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # A tag is the release version (v2.2.0 -> 2.2.0). Other builds get the project
+      # version with a pre-release suffix so they can never be mistaken for a release.
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            project_version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/VoiceRecogniseBot.csproj)"
+            version="${project_version}-ci.${GITHUB_RUN_NUMBER}"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$version' is not a version like 2.2.0. Tag releases as v<major>.<minor>.<patch>."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version" >> "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    name: Linux packages (${{ matrix.arch }})
+    needs: version
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build deb, rpm, AppImage and tarball
+        run: packaging/build-packages.sh "$VERSION" "${{ matrix.arch }}"
+
+      # The arm64 packages are cross-built and cannot run on this runner, so only x64 is exercised.
+      - name: Smoke test the deb
+        if: matrix.arch == 'x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./dist/*.deb
+          [ "$(voice-recognise-bot --version)" = "$VERSION" ]
+          systemctl is-active voice-recognise-bot
+          sudo voice-recognise-bot info
+
+          # End to end through ffmpeg and the native Whisper libraries.
+          ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=2" /tmp/tone.ogg
+          sudo voice-recognise-bot transcribe /tmp/tone.ogg --model ggml-tiny --lang EN
+
+          # The web UI of the running service.
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 http://localhost:5010/health
+          curl --fail --silent --show-error --output /dev/null http://localhost:5010/
+
+          sudo apt-get remove -y voice-recognise-bot
+
+      - name: Smoke test the AppImage
+        if: matrix.arch == 'x64'
+        run: |
+          appimage="$(ls dist/*.AppImage)"
+          [ "$("$appimage" --appimage-extract-and-run --version)" = "$VERSION" ]
+          "$appimage" --appimage-extract-and-run info
+
+      - name: Smoke test the rpm
+        if: matrix.arch == 'x64'
+        run: |
+          docker run --rm -v "$PWD/dist:/dist:ro" fedora:latest sh -c '
+            set -e
+            dnf install -y --setopt=install_weak_deps=False /dist/*.x86_64.rpm
+            voice-recognise-bot --version
+            voice-recognise-bot info
+          '
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  windows:
+    name: Windows zip
+    needs: version
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish and zip
+        run: |
+          name="voice-recognise-bot-$VERSION-win-x64"
+          dotnet publish src/VoiceRecogniseBot.csproj \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            -p:Version="$VERSION" \
+            -p:DebugType=none \
+            --output "build/$name"
+          mkdir dist
+          (cd build && zip -qr "../dist/$name.zip" "$name")
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-x64
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, linux, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS
+
+      # Re-running the workflow for an existing release replaces its files instead of failing.
+      - name: Publish release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+          fi

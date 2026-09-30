@@ -1,139 +1,126 @@
 # VoiceRecogniseTelegramBot
 
-`VoiceRecogniseTelegramBot` is a .NET 10 Telegram bot that downloads voice or audio messages, converts them to WAV, and runs Whisper transcription locally.
+A Telegram bot that transcribes voice, audio and video messages into text. Transcription runs
+locally with [Whisper](https://github.com/sandrohanea/whisper.net); nothing is sent to a
+speech-to-text service.
 
-The project is small, but it now has a clearer command-line interface and a simpler configuration story:
+- Replies to voice messages, audio files, video notes and videos with their text
+- Each chat picks its own recognition language from a list you configure
+- Web UI for settings, bot messages, statistics and logs
+- One command-line tool for everything: see the [command-line reference](docs/cli.md)
+- Packages for Linux (`.deb`, `.rpm`, AppImage, tarball), Windows (zip) and Docker
 
-- `run` starts the Telegram bot and the local stats endpoint
-- `config-show` prints the active config
-- `config-set` updates config values without hand-editing JSON
-- `config-path` and `stats-path` show where runtime files live
-- `stats-show` prints the saved message counters
+## Install
 
+Download the files from the [latest release](https://github.com/azaslavskis/VoiceRecogniseTelegramBot/releases/latest).
+The Linux builds exist for x86-64 and ARM64 and include the .NET runtime.
 
+You need a bot token from [@BotFather](https://t.me/BotFather) and `ffmpeg`.
 
-## Nice WebUI  
-<img width="1888" height="824" alt="Screenshot 2026-06-09 at 23 49 11" src="https://github.com/user-attachments/assets/fe8de99c-d001-4575-abfd-948979aebdbd" />  
-
-## Project Layout  
-
-
-```text
-src/
-  Program.cs            CLI entrypoint
-  TelegramAPI.cs        Telegram update handling
-  WhisperAPI.cs         Whisper model loading and transcription
-  AudioToWav.cs         Audio conversion helpers
-  Config.cs             Config read/write helper
-  CreateFiles.cs        First-run file bootstrap
-  SettingsPathClass.cs  Runtime path resolution
-  Stats.cs              Message counters
-  WebUIAPI.cs           Local HTTP stats endpoint
-```
-## Requirements
-
-- .NET 10 SDK
-- A Telegram bot token from BotFather
-- `ffmpeg` available in `PATH`, or set via `FFMPEG_PATH`
-- Whisper runtime dependencies required by `Whisper.net`
-
-## Build
+### Debian / Ubuntu
 
 ```bash
-dotnet build src/VoiceRecogniseBot.sln
+sudo apt install ./voice-recognise-bot_<version>_amd64.deb
+sudo voice-recognise-bot config set --token "123456:ABC-DEF"
 ```
 
-## Docker
+### Fedora / RHEL
 
-Build the image:
+```bash
+sudo dnf install ./voice-recognise-bot-<version>-1.x86_64.rpm
+sudo voice-recognise-bot config set --token "123456:ABC-DEF"
+```
+
+`ffmpeg` is a recommended rather than a required dependency of the `.rpm`, because not every
+RPM distribution ships it in its base repositories. Install it separately if `dnf` did not.
+
+Both packages install a `voice-recognise-bot` systemd service that starts on boot and runs as
+its own `voicebot` user. The bot connects a few seconds after the token is saved.
+
+| What | Where |
+| --- | --- |
+| Program | `/opt/voice-recognise-bot` |
+| Configuration, statistics, logs, models | `/var/lib/voice-recognise-bot` |
+| Service environment (web UI address, ffmpeg path) | `/etc/default/voice-recognise-bot` |
+| Service logs | `journalctl -u voice-recognise-bot -f` |
+
+Run `voice-recognise-bot` with `sudo` to manage the service's configuration; without `sudo` it
+uses your own per-user configuration. Removing the package keeps the data directory;
+`apt purge` deletes it.
+
+### AppImage
+
+```bash
+chmod +x VoiceRecogniseBot-<version>-x86_64.AppImage
+./VoiceRecogniseBot-<version>-x86_64.AppImage config set --token "123456:ABC-DEF"
+./VoiceRecogniseBot-<version>-x86_64.AppImage run
+```
+
+The AppImage needs `ffmpeg` and the OpenMP runtime (`libgomp1` on Debian and Ubuntu, `libgomp`
+on Fedora) from the system.
+
+### Tarball and Windows zip
+
+Unpack and run `./VoiceRecogniseBot` (`VoiceRecogniseBot.exe` on Windows) with the same
+commands. On Windows, install ffmpeg with `winget install Gyan.FFmpeg`.
+
+### Docker
 
 ```bash
 docker build -t voice-recognise-bot .
-```
 
-Create a persistent data directory and initialize the config:
-
-```bash
 mkdir -p ./voicebot-data
-docker run --rm \
-  -v "$PWD/voicebot-data:/data" \
-  voice-recognise-bot config-set \
-  --token "123456:telegram-token" \
-  --model ggml-base \
-  --lang EN,RU,LV \
-  --default-lang EN
+docker run --rm -v "$PWD/voicebot-data:/data" voice-recognise-bot \
+  config set --token "123456:ABC-DEF"
+
+docker run -d --name voice-recognise-bot --restart unless-stopped \
+  -p 127.0.0.1:5010:5010 -v "$PWD/voicebot-data:/data" voice-recognise-bot
 ```
 
-Run the bot:
+The container keeps its configuration, statistics and models in `/data`.
+
+## Web UI
+
+`voice-recognise-bot run` serves the web UI at <http://localhost:5010>:
+
+- **Overview**: bot status, message and transcription counters, messages per day
+- **Settings**: bot token, Whisper model, recognition languages
+- **Bot messages**: every button label and reply the bot sends
+- **Logs**: the most recent log lines, refreshed live
+- **JSON**: the same settings as raw JSON
+
+Changes are applied to the running bot without a restart, including a new token.
+
+The web UI has no login. By default it only accepts connections from the same machine. To
+reach it from elsewhere, set `VOICE_RECOGNISEBOT_WEB_URLS=http://0.0.0.0:5010` (or pass
+`--urls`), and only do that on a network you trust: anyone who can open the page can change
+the bot's settings. An SSH tunnel (`ssh -L 5010:localhost:5010 server`) avoids exposing it.
+
+## Command line
 
 ```bash
-docker run -d \
-  --name voice-recognise-bot \
-  --restart unless-stopped \
-  -v "$PWD/voicebot-data:/data" \
-  voice-recognise-bot
+voice-recognise-bot info                                   # version, file locations, setup check
+voice-recognise-bot config set --lang EN,RU,LV --default-lang EN
+voice-recognise-bot config set --model ggml-small
+voice-recognise-bot model download                         # fetch the model ahead of time
+voice-recognise-bot transcribe voice.ogg --lang EN         # try it without Telegram
+voice-recognise-bot logs --follow
+voice-recognise-bot run                                    # bot + web UI
 ```
 
-Run only the web UI and expose it on port 5010:
-
-```bash
-docker run --rm \
-  -p 5010:5010 \
-  -v "$PWD/voicebot-data:/data" \
-  voice-recognise-bot run web-ui
-```
-
-The container stores config, stats, and managed Whisper models in `/data`.
-
-## Linux Systemd Install
-
-Install and start the bot as a `systemd` service:
-
-```bash
-sudo ./scripts/install-linux.sh \
-  --token "123456:telegram-token" \
-  --model ggml-base \
-  --lang EN,RU,LV \
-  --default-lang EN
-```
-
-The installer publishes the app to `/opt/voice-recognise-bot`, stores runtime data in `/var/lib/voice-recognise-bot`, installs `/etc/systemd/system/voice-recognise-bot.service`, enables the service, and starts it.
-
-Service helper:
-
-```bash
-./scripts/voicebotctl.sh status
-./scripts/voicebotctl.sh logs
-./scripts/voicebotctl.sh restart
-```
+The full list of commands and options is in the [command-line reference](docs/cli.md).
 
 ## Configuration
 
-On first start the app creates `appsettings.json` and `stats.json` in its runtime config directory.
-
-Default locations:
-
-- Linux: `${XDG_CONFIG_HOME:-~/.config}/VoiceRecogniseBot`
-- macOS: `~/Library/Application Support/VoiceRecogniseBot`
-- Windows: `%LocalAppData%\VoiceRecogniseBot`
-
-You can override this location with:
-
-```bash
-export VOICE_RECOGNISEBOT_HOME=/path/to/runtime-data
-```
-
-Example config:
+The settings live in `appsettings.json` in the data directory (`voice-recognise-bot config path`
+prints where). Edit them with `config set`, in the web UI, or by hand.
 
 ```json
 {
   "Model": "ggml-base",
-  "Token": "123456:telegram-token",
-  "Lang": [
-    "RU",
-    "LV",
-    "EN"
-  ],
+  "Token": "123456:ABC-DEF",
+  "WebServer": true,
+  "Lang": ["RU", "LV", "EN"],
   "DefaultLang": "EN",
   "BotText": {
     "SetLanguageButton": "Set Lang",
@@ -151,103 +138,67 @@ Example config:
 }
 ```
 
-Notes:
+- `Model` is a Whisper model name such as `ggml-base` or `ggml-large-v3-turbo`, or the path to
+  a model file. Named models are downloaded into `models/` in the data directory on first use.
+- `Lang` is the list users choose from in Telegram; `DefaultLang` must be one of them.
+- `WebServer` controls whether a plain `run` also starts the web UI.
+- `BotText` holds every button label and message the bot sends.
 
-- `Model` can be a Whisper model name such as `ggml-base` or a path to an existing local model file
-- Built-in model aliases are downloaded into the runtime data directory under `models/`
-- `Lang` is the list shown to Telegram users in the language keyboard
-- `DefaultLang` should also appear in `Lang`
-- `FFMPEG_PATH` can point to the folder containing `ffmpeg` if it is not on `PATH`
-- `BotText` lets you customize bot buttons and user-facing Telegram messages without changing code
+## Using the bot in Telegram
 
-## Cross-Platform Publish
+- Send `start` or `/start` to open the keyboard
+- **Set Lang** shows the configured languages; the choice applies to that chat
+- **About** prints a short description
+- **Log** replies with the most recent log lines. Every user of the bot can press it, so treat
+  the log as visible to them
+- Send or forward a voice message, audio file, video note or video to get its transcription
 
-The project is no longer pinned to one operating system. It can be built on any supported .NET 10 host and published for Windows, Linux, or macOS by choosing the runtime identifier at publish time.
+## Build from source
 
-Example Windows publish:
-
-```bash
-dotnet publish src/VoiceRecogniseBot.csproj -c Release -r win-x64 --self-contained false
-```
-
-Example Linux publish:
+Requires the .NET 10 SDK.
 
 ```bash
-dotnet publish src/VoiceRecogniseBot.csproj -c Release -r linux-x64 --self-contained false
-```
-
-Example macOS publish:
-
-```bash
-dotnet publish src/VoiceRecogniseBot.csproj -c Release -r osx-arm64 --self-contained false
-```
-
-## CLI Usage
-
-Show help:
-
-```bash
-dotnet run --project src/VoiceRecogniseBot.csproj -- --help
-```
-
-Print the config path:
-
-```bash
-dotnet run --project src/VoiceRecogniseBot.csproj -- config-path
-```
-
-Show the current config:
-
-```bash
-dotnet run --project src/VoiceRecogniseBot.csproj -- config-show
-```
-
-Update config values:
-
-```bash
-dotnet run --project src/VoiceRecogniseBot.csproj -- config-set \
-  --token "123456:telegram-token" \
-  --model ggml-base \
-  --lang EN,RU,LV \
-  --default-lang EN
-```
-
-Show stats:
-
-```bash
-dotnet run --project src/VoiceRecogniseBot.csproj -- stats-show
-```
-
-Run the bot:
-
-```bash
+dotnet build src/VoiceRecogniseBot.sln
 dotnet run --project src/VoiceRecogniseBot.csproj -- run
 ```
 
-## Runtime Behavior
+To build the Linux packages locally (on x86-64 Linux, for either architecture):
 
-- The Telegram bot listens for voice, audio, video note, and video updates
-- Voice, audio, and video files are converted to 16 kHz mono WAV with `ffmpeg` through `FFMpegCore` before Whisper transcription
-- A simple local HTTP server listens on `http://localhost:5010/` and returns basic JSON stats
-- Message counters are written to `stats.json`
+```bash
+packaging/build-packages.sh 2.2.0 x64      # or arm64
+ls dist/
+```
 
-## Telegram Controls
+```text
+src/                     application
+  Program.cs             entry point
+  Cli.cs                 command-line interface
+  TelegramAPI.cs         Telegram update handling
+  WhisperAPI.cs          model download and transcription
+  AudioToWav.cs          ffmpeg conversion
+  WebUI.cs               web server and JSON endpoints
+  wwwroot/               web UI (plain HTML, CSS and JavaScript)
+  ConfigStore.cs         configuration file
+  StatsStore.cs          message counters
+  AppLog.cs, AppPaths.cs logging and file locations
+packaging/               deb, rpm and AppImage definitions
+scripts/                 manual systemd setup for a build from source
+docs/cli.md              command-line reference
+```
 
-- Send `start` or `/start` to open the bot keyboard
-- `Set Lang` shows the configured language list
-- `Log` returns the in-memory application log
-- `About` prints a short bot description
+## Releases
 
-## Current Limitations
+Every push builds the packages and smoke-tests them in GitHub Actions. Pushing a tag publishes
+a release:
 
-- The project now depends on an external `ffmpeg` binary being installed, while media conversion is managed through the `FFMpegCore` wrapper
-- If `ffmpeg` is missing or conversion fails, the bot now returns a direct Telegram error message instead of failing silently
-- The bot responses and keyboard labels are still hard-coded
-- The local HTTP server is a minimal stats endpoint, not a full Web UI
-- I did not verify a full build in this workspace because `dotnet` is not installed in the current shell
+```bash
+git tag v2.2.0
+git push origin v2.2.0
+```
 
-## Suggested Next Cleanup
+The tag sets the version of the binaries and packages, and the release gets the `.deb`, `.rpm`,
+AppImage and tarball for x86-64 and ARM64, the Windows zip, and a `SHA256SUMS` file.
 
-- Split Telegram command handling into smaller methods
-- Replace hard-coded response text with config-driven strings
-- Add automated tests around config parsing and stats persistence
+## License
+
+MIT, see [src/LICENSE.txt](src/LICENSE.txt).

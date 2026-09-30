@@ -1,420 +1,485 @@
-const settingsEndpoint = "/settings";
-const statsEndpoint = "/stats";
-const healthEndpoint = "/health";
+const REFRESH_INTERVAL_MS = 10_000;
+const LOG_REFRESH_INTERVAL_MS = 5_000;
+const LOG_LINES = 300;
 
-const botTextFields = [
-  "SetLanguageButton",
-  "LogButton",
-  "AboutButton",
-  "MainMenuPrompt",
-  "LanguagePrompt",
-  "AboutMessage",
-  "UnknownCommandMessage",
-  "TranscriptionInProgressMessage",
-  "TranscriptionResultPrefix",
-  "LanguageChangedPrefix",
-  "InternalErrorMessage"
+const BOT_TEXT_FIELDS = [
+  ["SetLanguageButton", "Language button"],
+  ["LogButton", "Log button"],
+  ["AboutButton", "About button"],
+  ["MainMenuPrompt", "Main menu prompt"],
+  ["LanguagePrompt", "Language prompt"],
+  ["AboutMessage", "About message"],
+  ["UnknownCommandMessage", "Unknown command reply"],
+  ["TranscriptionInProgressMessage", "Transcription in progress"],
+  ["TranscriptionResultPrefix", "Transcription result prefix"],
+  ["LanguageChangedPrefix", "Language changed prefix"],
+  ["InternalErrorMessage", "Internal error reply"]
 ];
 
-const state = {
-  settings: null,
-  stats: null,
-  health: null,
-  rawJson: "",
-  activeView: "dashboard",
-  loading: true,
-  saving: false,
-  dirty: false,
-  parseError: ""
+const BOT_STATES = {
+  Online: (bot) => [`@${bot.Username} online`, "good"],
+  Connecting: () => ["Connecting to Telegram", "neutral"],
+  WaitingForToken: () => ["Waiting for bot token", "warn"],
+  Error: () => ["Telegram connection failed", "bad"],
+  Stopped: () => ["Bot stopped", "neutral"],
+  NotRunning: () => ["Web UI only", "neutral"]
 };
 
-const content = document.getElementById("content");
-const summary = document.getElementById("summary");
-const statusText = document.getElementById("statusText");
-const dirtyBadge = document.getElementById("dirtyBadge");
-const reloadButton = document.getElementById("reloadButton");
-const saveButton = document.getElementById("saveButton");
-const dashboardTab = document.getElementById("dashboardTab");
-const jsonTab = document.getElementById("jsonTab");
+const $ = (id) => document.getElementById(id);
 
-reloadButton.addEventListener("click", loadDashboard);
-saveButton.addEventListener("click", saveSettings);
-dashboardTab.addEventListener("click", () => setView("dashboard"));
-jsonTab.addEventListener("click", () => setView("json"));
+const state = {
+  saved: null, // settings as last loaded from or saved to the server
+  draft: null, // settings being edited
+  tokenConfigured: false,
+  jsonError: "",
+  activeTab: "overview",
+  saving: false
+};
 
-function setView(view) {
-  state.activeView = view;
-  dashboardTab.classList.toggle("active", view === "dashboard");
-  jsonTab.classList.toggle("active", view === "json");
-  render();
-}
+// ---------------------------------------------------------------- API
 
-async function loadDashboard() {
-  state.loading = true;
-  state.parseError = "";
-  setStatus("Loading dashboard", "neutral");
-  render();
-
+async function request(url, options) {
+  let response;
   try {
-    const [settings, stats, health] = await Promise.all([
-      getJson(settingsEndpoint),
-      getJson(statsEndpoint),
-      getJson(healthEndpoint)
-    ]);
-
-    state.settings = normalizeSettings(settings);
-    state.stats = stats;
-    state.health = health;
-    state.rawJson = JSON.stringify(state.settings, null, 2);
-    state.dirty = false;
-    setStatus("Dashboard loaded", "good");
-  } catch (error) {
-    setStatus(error.message, "bad");
-  } finally {
-    state.loading = false;
-    render();
+    response = await fetch(url, { headers: { Accept: "application/json" }, ...options });
+  } catch {
+    throw new Error("The bot's web server is not reachable.");
   }
-}
 
-async function getJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
   const text = await response.text();
-  return text.trim() ? JSON.parse(text) : {};
+  let payload = {};
+  try {
+    payload = text.trim() ? JSON.parse(text) : {};
+  } catch {
+    // Non-JSON error pages fall through to the status check below.
+  }
+
+  if (!response.ok) throw new Error(payload.Error || `${url} returned ${response.status}`);
+  return payload;
 }
 
-async function saveSettings() {
-  if (!state.settings || state.parseError) return;
+// ---------------------------------------------------------------- Loading
 
-  state.saving = true;
-  setStatus("Saving settings", "neutral");
-  render();
-
+async function loadAll() {
+  $("reloadButton").disabled = true;
   try {
-    const response = await fetch(settingsEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify(state.settings, null, 2)
-    });
-
-    const responseText = await response.text();
-    const payload = responseText.trim() ? JSON.parse(responseText) : {};
-    if (!response.ok) throw new Error(payload.error || `Save returned ${response.status}`);
-
-    state.settings = normalizeSettings(payload);
-    state.rawJson = JSON.stringify(state.settings, null, 2);
-    state.dirty = false;
-    setStatus("Settings saved", "good");
+    const [settings] = await Promise.all([request("/settings"), refreshStatus()]);
+    applySettings(settings);
+    $("loadError").hidden = true;
   } catch (error) {
-    setStatus(error.message, "bad");
+    $("loadError").textContent = error.message;
+    $("loadError").hidden = false;
   } finally {
-    state.saving = false;
-    render();
+    $("reloadButton").disabled = false;
   }
+
+  if (state.activeTab === "logs") refreshLogs();
 }
 
-function normalizeSettings(settings) {
-  return {
-    Model: settings.Model ?? "ggml-base",
-    Token: settings.Token ?? "",
-    WebServer: Boolean(settings.WebServer),
-    Lang: Array.isArray(settings.Lang) ? settings.Lang : [],
-    DefaultLang: settings.DefaultLang ?? "",
-    BotText: settings.BotText ?? {}
-  };
+function applySettings(payload) {
+  state.saved = payload.Settings;
+  state.draft = structuredClone(payload.Settings);
+  state.tokenConfigured = payload.TokenConfigured;
+  state.jsonError = "";
+  fillForms();
+  renderOverviewSettings();
+  syncDirty();
 }
 
-function setStatus(message, tone) {
-  statusText.textContent = message;
-  statusText.className = tone === "neutral" ? "" : tone;
-}
-
-function markDirty() {
-  state.rawJson = JSON.stringify(state.settings, null, 2);
-  state.dirty = true;
-  setStatus("Unsaved changes", "warn");
-  syncControls();
-}
-
-function updateSetting(key, value) {
-  state.settings = { ...state.settings, [key]: value };
-  markDirty();
-  render();
-}
-
-function updateBotText(key, value) {
-  state.settings = {
-    ...state.settings,
-    BotText: {
-      ...state.settings.BotText,
-      [key]: value
-    }
-  };
-  markDirty();
-}
-
-function updateRawJson(value) {
-  state.rawJson = value;
-  state.dirty = true;
-
+/** Refreshes the parts that change on their own: bot status and counters. */
+async function refreshStatus() {
   try {
-    state.settings = normalizeSettings(JSON.parse(value || "{}"));
-    state.parseError = "";
-    setStatus("Unsaved changes", "warn");
+    const [health, stats] = await Promise.all([request("/health"), request("/stats")]);
+    renderHealth(health);
+    renderStats(stats);
   } catch (error) {
-    state.parseError = error.message;
-    setStatus("JSON has errors", "bad");
-  }
-
-  syncControls();
-  const error = document.getElementById("jsonError");
-  if (error) {
-    error.textContent = state.parseError;
-    error.hidden = !state.parseError;
+    setBotStatus("Server unreachable", "bad", error.message);
+    throw error;
   }
 }
 
-function syncControls() {
-  reloadButton.disabled = state.loading || state.saving;
-  saveButton.disabled = state.loading || state.saving || Boolean(state.parseError) || !state.settings;
-  saveButton.textContent = state.saving ? "Saving" : "Save";
-  dirtyBadge.hidden = !state.dirty;
+async function refreshLogs() {
+  const output = $("logOutput");
+  try {
+    const logs = await request(`/logs?lines=${LOG_LINES}`);
+    const pinnedToEnd = output.scrollTop + output.clientHeight >= output.scrollHeight - 24;
+    output.textContent = logs.Lines.length ? logs.Lines.join("\n") : "No log messages yet.";
+    if (pinnedToEnd) output.scrollTop = output.scrollHeight;
+  } catch (error) {
+    output.textContent = error.message;
+  }
 }
 
-function render() {
-  syncControls();
-  renderSummary();
+// ---------------------------------------------------------------- Overview
 
-  if (state.loading) {
-    content.className = "empty";
-    content.textContent = "Loading dashboard...";
-    return;
-  }
-
-  if (!state.settings) {
-    content.className = "empty error-state";
-    content.textContent = "Dashboard could not load.";
-    return;
-  }
-
-  if (state.activeView === "json") {
-    renderJsonEditor();
-    return;
-  }
-
-  renderDashboard();
+function setBotStatus(label, tone, title = "") {
+  $("botStatusText").textContent = label;
+  $("botStatus").dataset.tone = tone;
+  $("botStatus").title = title;
 }
 
-function renderSummary() {
-  summary.textContent = "";
-  const items = [
-    ["Total messages", state.stats?.TotalMessages ?? "-"],
-    ["Past 7 days", state.stats?.MessagesPast7Days ?? "-"],
-    ["Web UI", state.health?.status ?? "unknown"],
-    ["Languages", state.settings?.Lang?.join(", ") || "-"]
-  ];
+function renderHealth(health) {
+  const bot = health.Bot ?? { State: "NotRunning" };
+  const [label, tone] = (BOT_STATES[bot.State] ?? BOT_STATES.NotRunning)(bot);
+  setBotStatus(label, tone, bot.Error ?? "");
 
-  items.forEach(([label, value]) => {
-    const item = document.createElement("article");
-    item.className = "metric";
-    item.append(createElement("span", label), createElement("strong", String(value)));
-    summary.append(item);
-  });
+  $("versionText").textContent = `Admin · v${health.Version}`;
+  $("factBot").textContent = bot.Error ? `${label}: ${bot.Error}` : label;
+  $("factStarted").textContent = new Date(health.StartedAtUtc).toLocaleString();
+  $("factSettingsPath").textContent = health.SettingsPath;
+  $("factStatsPath").textContent = health.StatsPath;
+  $("factLogPath").textContent = health.LogPath;
 }
 
-function renderDashboard() {
-  content.className = "dashboard";
-  content.textContent = "";
+function renderOverviewSettings() {
+  $("metricModel").textContent = state.saved.Model;
+  $("metricLanguages").textContent = state.saved.Lang.join(", ") || "no languages";
+}
 
-  const settingsPanel = createPanel("Runtime Settings");
-  settingsPanel.append(
-    createTextField("Model", state.settings.Model, (value) => updateSetting("Model", value)),
-    createPasswordField("Telegram Token", state.settings.Token, (value) => updateSetting("Token", value)),
-    createLanguageEditor(),
-    createToggleField("Web Server", state.settings.WebServer, (value) => updateSetting("WebServer", value))
+function renderStats(stats) {
+  $("metricMessages").textContent = stats.TotalMessages.toLocaleString();
+  $("metricTranscriptions").textContent = stats.TotalTranscriptions.toLocaleString();
+  $("metricWeek").textContent = stats.MessagesPast7Days.toLocaleString();
+  renderChart(stats.Daily);
+
+  $("chartTableBody").replaceChildren(
+    ...stats.Daily.toReversed().map((day) => {
+      const row = document.createElement("tr");
+      row.append(el("td", formatDay(day.Date, { weekday: "short" })), el("td", day.Messages), el("td", day.Transcriptions));
+      return row;
+    })
   );
-
-  const botTextPanel = createPanel("Bot Messages", "wide");
-  const textGrid = document.createElement("div");
-  textGrid.className = "message-grid";
-  botTextFields.forEach((key) => {
-    textGrid.append(createTextareaField(titleFromKey(key), state.settings.BotText[key] ?? "", (value) => updateBotText(key, value)));
-  });
-  botTextPanel.append(textGrid);
-
-  content.append(settingsPanel, botTextPanel);
 }
 
-function renderJsonEditor() {
-  content.className = "editor";
-  content.textContent = "";
+function renderChart(days) {
+  const chart = $("chart");
+  const axisMax = niceMax(Math.max(...days.map((day) => day.Messages)));
 
-  const textarea = document.createElement("textarea");
-  textarea.value = state.rawJson;
-  textarea.spellcheck = false;
-  textarea.addEventListener("input", (event) => updateRawJson(event.currentTarget.value));
-  content.append(textarea);
+  const axis = el("div", "", "chart-axis");
+  axis.append(el("span", 0), el("span", axisMax / 2), el("span", axisMax));
 
-  const error = document.createElement("p");
-  error.id = "jsonError";
-  error.className = "error";
-  error.textContent = state.parseError;
-  error.hidden = !state.parseError;
-  content.append(error);
-}
+  const plot = el("div", "", "chart-plot");
+  const labels = el("div", "", "chart-labels");
 
-function createPanel(title, variant = "") {
-  const panel = document.createElement("section");
-  panel.className = `panel ${variant}`.trim();
-  panel.append(createElement("h2", title));
-  return panel;
-}
+  if (days.every((day) => day.Messages === 0)) {
+    plot.append(el("p", "No messages in this period yet.", "chart-empty"));
+  } else {
+    days.forEach((day) => {
+      const column = el("div", "", "chart-column");
+      column.tabIndex = 0;
+      column.setAttribute("aria-label", `${formatDay(day.Date)}: ${day.Messages} messages, ${day.Transcriptions} transcriptions`);
 
-function createTextField(label, value, onInput) {
-  const field = createFieldShell(label);
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = value ?? "";
-  input.addEventListener("input", (event) => onInput(event.currentTarget.value));
-  field.append(input);
-  return field;
-}
+      const bar = el("div", "", "chart-bar");
+      // Keep non-zero days visible even when one busy day dominates the scale.
+      bar.style.height = day.Messages ? `max(${(day.Messages / axisMax) * 100}%, 3px)` : "0";
+      column.append(bar);
 
-function createPasswordField(label, value, onInput) {
-  const field = createFieldShell(label);
-  const row = document.createElement("div");
-  row.className = "input-row";
-
-  const input = document.createElement("input");
-  input.type = "password";
-  input.value = value ?? "";
-  input.addEventListener("input", (event) => onInput(event.currentTarget.value));
-
-  const button = document.createElement("button");
-  button.className = "icon-button subtle";
-  button.type = "button";
-  button.textContent = "◐";
-  button.title = "Show or hide token";
-  button.setAttribute("aria-label", "Show or hide token");
-  button.addEventListener("click", () => {
-    input.type = input.type === "password" ? "text" : "password";
-  });
-
-  row.append(input, button);
-  field.append(row);
-  return field;
-}
-
-function createTextareaField(label, value, onInput) {
-  const field = createFieldShell(label);
-  const textarea = document.createElement("textarea");
-  textarea.className = "compact";
-  textarea.value = value ?? "";
-  textarea.addEventListener("input", (event) => onInput(event.currentTarget.value));
-  field.append(textarea);
-  return field;
-}
-
-function createToggleField(label, value, onToggle) {
-  const field = createFieldShell(label);
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `toggle${value ? " enabled" : ""}`;
-  button.innerHTML = `<span></span>${value ? "Enabled" : "Disabled"}`;
-  button.addEventListener("click", () => onToggle(!value));
-  field.append(button);
-  return field;
-}
-
-function createLanguageEditor() {
-  const field = createFieldShell("Recognition Languages");
-  const chips = document.createElement("div");
-  chips.className = "chips";
-
-  state.settings.Lang.forEach((language) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = language === state.settings.DefaultLang ? "chip selected" : "chip";
-    chip.textContent = language;
-    chip.title = "Set default language";
-    chip.addEventListener("click", () => updateSetting("DefaultLang", language));
-
-    const remove = document.createElement("span");
-    remove.textContent = "×";
-    remove.title = "Remove language";
-    remove.addEventListener("click", (event) => {
-      event.stopPropagation();
-      removeLanguage(language);
+      const show = () => showChartTooltip(column, day);
+      column.addEventListener("pointerenter", show);
+      column.addEventListener("focus", show);
+      column.addEventListener("pointerleave", hideChartTooltip);
+      column.addEventListener("blur", hideChartTooltip);
+      plot.append(column);
     });
+  }
 
-    chip.append(remove);
-    chips.append(chip);
+  days.forEach((day) => labels.append(el("span", formatDay(day.Date, { month: undefined }))));
+  chart.replaceChildren(axis, plot, labels);
+}
+
+function showChartTooltip(column, day) {
+  const tooltip = $("chartTooltip");
+  const rect = column.getBoundingClientRect();
+  const bar = column.firstElementChild.getBoundingClientRect();
+
+  tooltip.replaceChildren(
+    el("strong", formatDay(day.Date, { weekday: "short" })),
+    el("span", `${day.Messages.toLocaleString()} messages · ${day.Transcriptions.toLocaleString()} transcriptions`)
+  );
+  tooltip.hidden = false;
+
+  const halfWidth = tooltip.offsetWidth / 2;
+  const left = Math.min(Math.max(rect.left + rect.width / 2, halfWidth + 8), window.innerWidth - halfWidth - 8);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${bar.top}px`;
+}
+
+function hideChartTooltip() {
+  $("chartTooltip").hidden = true;
+}
+
+/** Rounds up to an even axis maximum so the midpoint label is a whole number. */
+function niceMax(value) {
+  if (value <= 4) return 4;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const step = [1, 2, 4, 5, 10].find((candidate) => candidate * magnitude >= value) * magnitude;
+  return step % 2 === 0 ? step : step * 2;
+}
+
+function formatDay(isoDate, options = {}) {
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+    ...options
+  });
+}
+
+// ---------------------------------------------------------------- Settings forms
+
+function buildBotTextFields() {
+  $("botTextFields").replaceChildren(
+    ...BOT_TEXT_FIELDS.map(([key, label]) => {
+      const field = el("div", "", "field");
+      const labelElement = el("label", label);
+      labelElement.htmlFor = `botText-${key}`;
+
+      const textarea = document.createElement("textarea");
+      textarea.id = `botText-${key}`;
+      textarea.addEventListener("input", () => edit((draft) => (draft.BotText[key] = textarea.value)));
+
+      field.append(labelElement, textarea);
+      return field;
+    })
+  );
+}
+
+/** Copies the draft into the form controls. */
+function fillForms() {
+  const draft = state.draft;
+  if (!draft) return;
+
+  $("tokenInput").value = draft.Token;
+  $("tokenInput").placeholder = state.tokenConfigured ? "Configured — leave empty to keep it" : "123456:ABC-DEF…";
+  $("tokenHint").textContent = state.tokenConfigured
+    ? "A token is saved. It is never shown here; enter a new one to replace it. The bot reconnects on its own."
+    : "No token yet. Create a bot with @BotFather in Telegram and paste its token here; the bot starts as soon as you save.";
+  $("modelInput").value = draft.Model;
+  $("webServerInput").checked = draft.WebServer;
+
+  BOT_TEXT_FIELDS.forEach(([key]) => {
+    $(`botText-${key}`).value = draft.BotText[key] ?? "";
   });
 
-  const row = document.createElement("form");
-  row.className = "input-row";
-  row.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const input = row.querySelector("input");
-    addLanguage(input.value);
-    input.value = "";
-  });
+  renderLanguages();
+  fillJson();
+}
 
-  const input = document.createElement("input");
-  input.placeholder = "Add language code";
-  input.maxLength = 8;
+function fillJson() {
+  if (!state.draft || state.jsonError) return; // on a JSON error, keep the text the user is still fixing
+  $("jsonInput").value = JSON.stringify(state.draft, null, 2);
+}
 
-  const button = document.createElement("button");
-  button.className = "secondary";
-  button.type = "submit";
-  button.textContent = "Add";
+function renderLanguages() {
+  const draft = state.draft;
 
-  row.append(input, button);
-  field.append(chips, row);
-  return field;
+  $("languageList").replaceChildren(
+    ...draft.Lang.map((language) => {
+      const isDefault = language === draft.DefaultLang;
+      const chip = el("li", "", "chip");
+      chip.dataset.default = isDefault;
+
+      const select = el("button", language, "chip-select");
+      select.type = "button";
+      select.setAttribute("aria-pressed", isDefault);
+      select.title = isDefault ? "Default language" : `Make ${language} the default`;
+      if (isDefault) select.append(el("span", "default", "chip-badge"));
+      select.addEventListener("click", () => {
+        draft.DefaultLang = language;
+        renderLanguages();
+        syncDirty();
+      });
+
+      const remove = el("button", "×", "chip-remove");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `Remove ${language}`);
+      remove.addEventListener("click", () => {
+        draft.Lang = draft.Lang.filter((item) => item !== language);
+        if (isDefault) draft.DefaultLang = draft.Lang[0] ?? "";
+        renderLanguages();
+        syncDirty();
+      });
+
+      chip.append(select, remove);
+      return chip;
+    })
+  );
 }
 
 function addLanguage(value) {
   const language = value.trim().toUpperCase();
-  if (!language || state.settings.Lang.includes(language)) return;
+  const draft = state.draft;
+  if (!draft || !language || draft.Lang.includes(language)) return;
 
-  updateSetting("Lang", [...state.settings.Lang, language]);
-  if (!state.settings.DefaultLang) updateSetting("DefaultLang", language);
+  draft.Lang.push(language);
+  if (!draft.DefaultLang) draft.DefaultLang = language;
+  renderLanguages();
+  syncDirty();
 }
 
-function removeLanguage(language) {
-  const nextLanguages = state.settings.Lang.filter((item) => item !== language);
-  const nextDefault = state.settings.DefaultLang === language ? (nextLanguages[0] ?? "") : state.settings.DefaultLang;
-  state.settings = {
-    ...state.settings,
-    Lang: nextLanguages,
-    DefaultLang: nextDefault
-  };
-  markDirty();
-  render();
+function onJsonInput() {
+  if (!state.saved) return;
+  const input = $("jsonInput");
+  try {
+    const parsed = JSON.parse(input.value || "{}");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("Settings must be a JSON object.");
+
+    state.draft = {
+      ...state.saved,
+      ...parsed,
+      Token: typeof parsed.Token === "string" ? parsed.Token : "",
+      Lang: Array.isArray(parsed.Lang) ? parsed.Lang.map(String) : [],
+      BotText: { ...state.saved.BotText, ...parsed.BotText }
+    };
+    state.jsonError = "";
+  } catch (error) {
+    state.jsonError = error.message;
+  }
+
+  input.setAttribute("aria-invalid", Boolean(state.jsonError));
+  $("jsonError").textContent = state.jsonError;
+  $("jsonError").hidden = !state.jsonError;
+  syncDirty();
 }
 
-function createFieldShell(label) {
-  const field = document.createElement("label");
-  field.className = "field";
-  field.append(createElement("span", label));
-  return field;
+/** Applies a change to the draft; a no-op until the settings have loaded. */
+function edit(change) {
+  if (!state.draft) return;
+  change(state.draft);
+  syncDirty();
 }
 
-function createElement(tag, text) {
+// ---------------------------------------------------------------- Saving
+
+function isDirty() {
+  return Boolean(state.draft) && (Boolean(state.jsonError) || JSON.stringify(state.draft) !== JSON.stringify(state.saved));
+}
+
+function syncDirty() {
+  $("saveBar").hidden = !isDirty();
+  $("saveButton").disabled = state.saving || Boolean(state.jsonError);
+  $("saveButton").textContent = state.saving ? "Saving…" : "Save changes";
+  $("discardButton").disabled = state.saving;
+}
+
+async function save() {
+  if (state.saving || state.jsonError || !state.draft) return;
+
+  state.saving = true;
+  syncDirty();
+  try {
+    const payload = await request("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(state.draft)
+    });
+    applySettings(payload);
+    toast("Settings saved");
+  } catch (error) {
+    toast(error.message, "bad");
+  } finally {
+    state.saving = false;
+    syncDirty();
+  }
+}
+
+function discard() {
+  state.draft = structuredClone(state.saved);
+  state.jsonError = "";
+  $("jsonInput").removeAttribute("aria-invalid");
+  $("jsonError").hidden = true;
+  fillForms();
+  syncDirty();
+}
+
+// ---------------------------------------------------------------- Tabs, toasts, helpers
+
+function selectTab(name, focus = false) {
+  state.activeTab = name;
+  document.querySelectorAll('[role="tab"]').forEach((tab) => {
+    const selected = tab.dataset.tab === name;
+    tab.setAttribute("aria-selected", selected);
+    tab.tabIndex = selected ? 0 : -1;
+    $(`panel-${tab.dataset.tab}`).hidden = !selected;
+    if (selected && focus) tab.focus();
+  });
+
+  // The form tabs and the JSON tab edit the same draft; bring the one being opened up to date.
+  if (name === "json") fillJson();
+  else if (!state.jsonError) fillForms();
+  if (name === "logs") refreshLogs();
+  history.replaceState(null, "", `#${name}`);
+}
+
+function toast(message, tone = "neutral") {
+  const item = el("div", message, "toast");
+  item.dataset.tone = tone;
+  $("toasts").append(item);
+  setTimeout(() => item.remove(), tone === "bad" ? 7000 : 3000);
+}
+
+function el(tag, text = "", className = "") {
   const element = document.createElement(tag);
   element.textContent = text;
+  if (className) element.className = className;
   return element;
 }
 
-function titleFromKey(key) {
-  return String(key)
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+// ---------------------------------------------------------------- Wiring
+
+function bindEvents() {
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => selectTab(tab.dataset.tab));
+    tab.addEventListener("keydown", (event) => {
+      const offset = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      if (!offset) return;
+      event.preventDefault();
+      selectTab(tabs[(index + offset + tabs.length) % tabs.length].dataset.tab, true);
+    });
+  });
+
+  $("reloadButton").addEventListener("click", () => {
+    if (!isDirty() || confirm("Reload and discard unsaved changes?")) loadAll();
+  });
+  $("saveButton").addEventListener("click", save);
+  $("discardButton").addEventListener("click", discard);
+
+  $("tokenInput").addEventListener("input", (event) => edit((draft) => (draft.Token = event.target.value.trim())));
+  $("tokenToggle").addEventListener("click", () => {
+    const reveal = $("tokenInput").type === "password";
+    $("tokenInput").type = reveal ? "text" : "password";
+    $("tokenToggle").textContent = reveal ? "Hide" : "Show";
+    $("tokenToggle").setAttribute("aria-pressed", reveal);
+  });
+  $("modelInput").addEventListener("input", (event) => edit((draft) => (draft.Model = event.target.value.trim())));
+  $("webServerInput").addEventListener("change", (event) => edit((draft) => (draft.WebServer = event.target.checked)));
+  $("languageForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    addLanguage($("languageInput").value);
+    $("languageInput").value = "";
+  });
+
+  $("jsonInput").addEventListener("input", onJsonInput);
+  $("logRefreshButton").addEventListener("click", refreshLogs);
+
+  window.addEventListener("beforeunload", (event) => {
+    if (isDirty()) event.preventDefault();
+  });
+  window.addEventListener("scroll", hideChartTooltip, { passive: true });
+
+  setInterval(() => {
+    if (!document.hidden) refreshStatus().catch(() => {});
+  }, REFRESH_INTERVAL_MS);
+  setInterval(() => {
+    if (!document.hidden && state.activeTab === "logs" && $("logAutoRefresh").checked) refreshLogs();
+  }, LOG_REFRESH_INTERVAL_MS);
 }
 
-loadDashboard();
+buildBotTextFields();
+bindEvents();
+
+const initialTab = location.hash.slice(1);
+if ($(`panel-${initialTab}`)) selectTab(initialTab);
+
+loadAll();

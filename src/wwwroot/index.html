@@ -3,36 +3,188 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Voice Recognise Bot Admin</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>Voice Recognise Bot</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
     <link rel="stylesheet" href="/assets/app.css" />
   </head>
   <body>
+    <header class="topbar">
+      <div class="shell topbar-inner">
+        <div class="brand">
+          <img src="/assets/icon.svg" alt="" width="36" height="36" />
+          <div>
+            <h1>Voice Recognise Bot</h1>
+            <p id="versionText" class="muted">Admin</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="botStatus" class="status" data-tone="neutral" role="status">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="botStatusText">Connecting</span>
+          </span>
+          <button id="reloadButton" class="button" type="button">Reload</button>
+        </div>
+      </div>
+
+      <div class="shell">
+        <div class="tabs" role="tablist" aria-label="Sections">
+          <button type="button" role="tab" id="tab-overview" data-tab="overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+          <button type="button" role="tab" id="tab-settings" data-tab="settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Settings</button>
+          <button type="button" role="tab" id="tab-messages" data-tab="messages" aria-controls="panel-messages" aria-selected="false" tabindex="-1">Bot messages</button>
+          <button type="button" role="tab" id="tab-logs" data-tab="logs" aria-controls="panel-logs" aria-selected="false" tabindex="-1">Logs</button>
+          <button type="button" role="tab" id="tab-json" data-tab="json" aria-controls="panel-json" aria-selected="false" tabindex="-1">JSON</button>
+        </div>
+      </div>
+    </header>
+
     <main class="shell">
-      <section class="topbar">
-        <div>
-          <p class="eyebrow">Voice Recognise Bot</p>
-          <h1>Admin</h1>
+      <p id="loadError" class="banner" data-tone="bad" role="alert" hidden></p>
+
+      <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
+        <div class="metrics">
+          <article class="card metric">
+            <h2>Messages</h2>
+            <strong id="metricMessages">–</strong>
+            <span class="muted">all time</span>
+          </article>
+          <article class="card metric">
+            <h2>Transcriptions</h2>
+            <strong id="metricTranscriptions">–</strong>
+            <span class="muted">all time</span>
+          </article>
+          <article class="card metric">
+            <h2>Last 7 days</h2>
+            <strong id="metricWeek">–</strong>
+            <span class="muted">messages</span>
+          </article>
+          <article class="card metric">
+            <h2>Model</h2>
+            <strong id="metricModel" class="metric-text">–</strong>
+            <span id="metricLanguages" class="muted">–</span>
+          </article>
         </div>
-        <div class="actions">
-          <button id="reloadButton" class="icon-button" type="button" aria-label="Reload dashboard" title="Reload dashboard">↻</button>
-          <button id="saveButton" class="primary" type="button">Save</button>
-        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <h2>Messages per day</h2>
+            <span class="muted">last 14 days, UTC</span>
+          </div>
+          <div id="chart" class="chart" role="img" aria-label="Messages per day over the last 14 days"></div>
+          <details class="chart-table">
+            <summary>View as table</summary>
+            <table>
+              <thead>
+                <tr><th scope="col">Date</th><th scope="col">Messages</th><th scope="col">Transcriptions</th></tr>
+              </thead>
+              <tbody id="chartTableBody"></tbody>
+            </table>
+          </details>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <h2>Runtime</h2>
+          </div>
+          <dl class="facts">
+            <dt>Bot</dt><dd id="factBot">–</dd>
+            <dt>Started</dt><dd id="factStarted">–</dd>
+            <dt>Settings file</dt><dd id="factSettingsPath" class="mono">–</dd>
+            <dt>Stats file</dt><dd id="factStatsPath" class="mono">–</dd>
+            <dt>Log file</dt><dd id="factLogPath" class="mono">–</dd>
+          </dl>
+        </article>
       </section>
 
-      <section id="statusRow" class="status-row">
-        <span id="statusText">Loading dashboard</span>
-        <strong id="dirtyBadge" hidden>Unsaved</strong>
+      <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+        <article class="card form">
+          <div class="field">
+            <label for="tokenInput">Telegram bot token</label>
+            <div class="input-row">
+              <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" />
+              <button id="tokenToggle" class="button" type="button" aria-pressed="false">Show</button>
+            </div>
+            <p id="tokenHint" class="hint"></p>
+          </div>
+
+          <div class="field">
+            <label for="modelInput">Whisper model</label>
+            <input id="modelInput" type="text" list="modelList" autocomplete="off" spellcheck="false" />
+            <datalist id="modelList">
+              <option value="ggml-tiny"></option>
+              <option value="ggml-base"></option>
+              <option value="ggml-small"></option>
+              <option value="ggml-medium"></option>
+              <option value="ggml-large-v3"></option>
+              <option value="ggml-large-v3-turbo"></option>
+            </datalist>
+            <p class="hint">A model name (downloaded on first use) or the full path to a local model file. Larger models are more accurate and slower.</p>
+          </div>
+
+          <div class="field">
+            <span class="label" id="languagesLabel">Recognition languages</span>
+            <ul id="languageList" class="chips" aria-labelledby="languagesLabel"></ul>
+            <form id="languageForm" class="input-row">
+              <input id="languageInput" type="text" maxlength="8" placeholder="Language code, e.g. DE" aria-label="Language code to add" autocomplete="off" />
+              <button class="button" type="submit">Add</button>
+            </form>
+            <p class="hint">Shown to users in the language keyboard. Select a language to make it the default for new chats.</p>
+          </div>
+
+          <div class="field">
+            <label class="switch">
+              <input id="webServerInput" type="checkbox" />
+              <span>Start the web UI together with the bot</span>
+            </label>
+            <p class="hint">Applies the next time the bot starts. Turning it off makes this page unavailable unless you start it with <code>run web-ui</code>.</p>
+          </div>
+        </article>
       </section>
 
-      <section id="summary" class="summary" aria-label="Bot summary"></section>
+      <section id="panel-messages" role="tabpanel" aria-labelledby="tab-messages" tabindex="0" hidden>
+        <article class="card">
+          <p class="hint intro">Button labels and replies the bot sends in Telegram. Changes apply to the next message, without a restart.</p>
+          <div id="botTextFields" class="form-grid"></div>
+        </article>
+      </section>
 
-      <nav class="tabs" aria-label="Admin view">
-        <button id="dashboardTab" class="active" type="button">Dashboard</button>
-        <button id="jsonTab" type="button">JSON</button>
-      </nav>
+      <section id="panel-logs" role="tabpanel" aria-labelledby="tab-logs" tabindex="0" hidden>
+        <article class="card">
+          <div class="card-head">
+            <h2>Recent log</h2>
+            <div class="card-actions">
+              <label class="switch">
+                <input id="logAutoRefresh" type="checkbox" checked />
+                <span>Auto-refresh</span>
+              </label>
+              <button id="logRefreshButton" class="button" type="button">Refresh</button>
+            </div>
+          </div>
+          <pre id="logOutput" class="log" tabindex="0" aria-label="Log output">Loading…</pre>
+        </article>
+      </section>
 
-      <section id="content" class="empty">Loading dashboard...</section>
+      <section id="panel-json" role="tabpanel" aria-labelledby="tab-json" tabindex="0" hidden>
+        <article class="card">
+          <p class="hint intro">The same settings as raw JSON. The token is never sent to the browser: leave <code>Token</code> empty to keep the current one.</p>
+          <textarea id="jsonInput" class="code" spellcheck="false" aria-label="Settings JSON" aria-describedby="jsonError"></textarea>
+          <p id="jsonError" class="field-error" role="alert" hidden></p>
+        </article>
+      </section>
     </main>
+
+    <div id="saveBar" class="savebar" hidden>
+      <div class="shell savebar-inner">
+        <span>Unsaved changes</span>
+        <div class="savebar-actions">
+          <button id="discardButton" class="button" type="button">Discard</button>
+          <button id="saveButton" class="button primary" type="button">Save changes</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <div id="chartTooltip" class="tooltip" hidden></div>
 
     <script type="module" src="/assets/app.js"></script>
   </body>

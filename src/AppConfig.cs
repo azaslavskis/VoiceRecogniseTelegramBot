@@ -2,8 +2,10 @@ namespace VoiceRecogniseBot;
 
 public sealed class AppConfig
 {
-    public string Model { get; set; } = "ggml-base";
-    public string Token { get; set; } = "xxxx";
+    public const string DefaultModel = "ggml-base";
+
+    public string Model { get; set; } = DefaultModel;
+    public string Token { get; set; } = ConfigStore.TokenPlaceholder;
     public bool WebServer { get; set; } = true;
     public List<string> Lang { get; set; } = ["RU", "LV", "EN"];
     public string DefaultLang { get; set; } = "EN";
